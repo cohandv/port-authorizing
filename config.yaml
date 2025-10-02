@@ -1,0 +1,79 @@
+server:
+  port: 8080
+  max_connection_duration: 2h
+
+auth:
+  jwt_secret: "your-secret-key-change-this-in-production"
+  token_expiry: 24h
+  users:
+    - username: admin
+      password: admin123  # Use hashed passwords in production
+      roles:
+        - admin
+    - username: developer
+      password: dev123
+      roles:
+        - developer
+
+connections:
+  # PostgreSQL test database (Docker)
+  - name: postgres-test
+    type: postgres
+    host: localhost
+    port: 5432
+    whitelist:
+      - "^SELECT.*"
+      - "^INSERT INTO logs.*"
+      - "^UPDATE users.*"
+    metadata:
+      description: "Test PostgreSQL database (Docker)"
+      environment: "test"
+      database: "testdb"
+      username: "testuser"
+  
+  # Nginx web server (Docker)
+  - name: nginx-server
+    type: http
+    host: localhost
+    port: 8888
+    scheme: http
+    metadata:
+      description: "Test Nginx web server (Docker)"
+      environment: "test"
+  
+  # Production examples (disabled by default)
+  - name: postgres-prod
+    type: postgres
+    host: prod-db.example.com
+    port: 5432
+    whitelist:
+      - "^SELECT.*"
+      - "^INSERT INTO logs.*"
+    metadata:
+      description: "Production PostgreSQL database"
+      environment: "production"
+  
+  - name: internal-api
+    type: http
+    host: api.internal.example.com
+    port: 443
+    scheme: https
+    metadata:
+      description: "Internal REST API"
+  
+  - name: redis-cache
+    type: tcp
+    host: redis.example.com
+    port: 6379
+    metadata:
+      description: "Redis cache server"
+
+security:
+  enable_llm_analysis: false
+  llm_provider: "openai"
+  llm_api_key: ""
+
+logging:
+  audit_log_path: "audit.log"
+  log_level: "info"
+

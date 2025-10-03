@@ -73,42 +73,67 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	clientConn.SetDeadline(conn.ExpiresAt)
 	targetConn.SetDeadline(conn.ExpiresAt)
 
-	// Transparent bidirectional TCP proxy
-	// Copy data in both directions without any parsing
+	// Create capture readers to record traffic (max 10KB per direction)
+	maxCaptureSize := 10 * 1024
+	requestCapture := newCaptureReader(bufrw, maxCaptureSize)
+	responseCapture := newCaptureReader(targetConn, maxCaptureSize)
+
+	// Transparent bidirectional TCP proxy with traffic capture
 	done := make(chan error, 2)
 
-	// Client → Target
+	// Client → Target (read from client, write to target)
 	go func() {
-		_, err := io.Copy(targetConn, bufrw)
+		_, err := io.Copy(targetConn, requestCapture)
 		done <- err
 	}()
 
-	// Target → Client
+	// Target → Client (read from target, write to client)
 	go func() {
-		_, err := io.Copy(bufrw, targetConn)
-		if err == nil {
-			bufrw.Flush()
-		}
+		_, err := io.Copy(clientConn, responseCapture)
 		done <- err
 	}()
 
-	// Wait for one direction to finish or timeout
+	// Wait for one direction to finish, or timeout
+	disconnectReason := "client_disconnect"
+
 	select {
-	case <-done:
-		// Normal completion
+	case err1 := <-done:
+		// One direction finished, close connections to signal EOF to both sides
+		targetConn.Close()
+		clientConn.Close()
+
+		// Wait for the other goroutine to finish
+		err2 := <-done
+
+		// Log any errors (for debugging)
+		if err1 != nil || err2 != nil {
+			// Errors are expected when connections close
+		}
+
 	case <-time.After(timeUntilExpiry):
 		// Connection expired - server-enforced timeout
-		fmt.Fprintf(bufrw, "\r\n\r\n[Connection timeout: %s expired]\r\n", conn.Config.Name)
-		bufrw.Flush()
+		disconnectReason = "timeout"
+
+		// Close connections to terminate goroutines
+		targetConn.Close()
+		clientConn.Close()
+
+		// Wait for both goroutines to finish
+		<-done
+		<-done
 	}
 
-	// Close both connections to stop the other direction
-	targetConn.Close()
-	clientConn.Close()
+	// Get captured traffic
+	requestData := requestCapture.GetData()
+	responseData := responseCapture.GetData()
 
-	// Log disconnection
-	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_disconnect", conn.Config.Name, map[string]interface{}{
-		"connection_id": connectionID,
-		"reason":        "timeout or completion",
+	// Log session with captured traffic
+	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_session", conn.Config.Name, map[string]interface{}{
+		"connection_id":    connectionID,
+		"reason":           disconnectReason,
+		"request_size":     len(requestData),
+		"response_size":    len(responseData),
+		"request_preview":  truncateData(requestData, 500),
+		"response_preview": truncateData(responseData, 500),
 	})
 }

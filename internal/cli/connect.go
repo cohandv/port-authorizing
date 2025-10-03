@@ -33,10 +33,6 @@ func init() {
 	connectCmd.MarkFlagRequired("local-port")
 }
 
-type connectRequest struct {
-	Duration string `json:"duration"`
-}
-
 type connectResponse struct {
 	ConnectionID string `json:"connection_id"`
 	ExpiresAt    string `json:"expires_at"`

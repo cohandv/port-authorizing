@@ -69,19 +69,19 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request
-	var req ConnectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		req.Duration = s.config.Server.MaxConnectionDuration
+	// Use connection-specific duration, fallback to server default
+	duration := connConfig.Duration
+	if duration == 0 {
+		duration = s.config.Server.MaxConnectionDuration
 	}
 
-	// Enforce max duration
-	if req.Duration > s.config.Server.MaxConnectionDuration {
-		req.Duration = s.config.Server.MaxConnectionDuration
+	// Enforce server max as upper limit
+	if duration > s.config.Server.MaxConnectionDuration {
+		duration = s.config.Server.MaxConnectionDuration
 	}
 
 	// Create connection
-	connectionID, expiresAt, err := s.connMgr.CreateConnection(username, connConfig, req.Duration)
+	connectionID, expiresAt, err := s.connMgr.CreateConnection(username, connConfig, duration)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create connection")
 		return
@@ -90,7 +90,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "connect", connectionName, map[string]interface{}{
 		"connection_id": connectionID,
-		"duration":      req.Duration.String(),
+		"duration":      duration.String(),
 	})
 
 	respondJSON(w, http.StatusOK, ConnectResponse{

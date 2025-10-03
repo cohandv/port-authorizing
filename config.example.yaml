@@ -21,6 +21,7 @@ connections:
     type: postgres
     host: localhost
     port: 5432
+    duration: 30m  # Auto-disconnect after 30 minutes
     whitelist:
       - "^SELECT.*"
       - "^INSERT INTO logs.*"
@@ -37,6 +38,7 @@ connections:
     host: localhost
     port: 8888
     scheme: http
+    duration: 1h  # Auto-disconnect after 1 hour
     metadata:
       description: "Test Nginx web server (Docker)"
       environment: "test"
@@ -46,6 +48,7 @@ connections:
     type: postgres
     host: prod-db.example.com
     port: 5432
+    duration: 15m  # Short timeout for production
     whitelist:
       - "^SELECT.*"
       - "^INSERT INTO logs.*"
@@ -58,6 +61,7 @@ connections:
     host: api.internal.example.com
     port: 443
     scheme: https
+    duration: 2h  # Longer for API access
     metadata:
       description: "Internal REST API"
 
@@ -65,6 +69,7 @@ connections:
     type: tcp
     host: redis.example.com
     port: 6379
+    duration: 5m  # Very short for cache operations
     metadata:
       description: "Redis cache server"
 

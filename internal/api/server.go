@@ -44,7 +44,9 @@ func (s *Server) setupRoutes() {
 	api.Use(s.authMiddleware)
 	api.HandleFunc("/connections", s.handleListConnections).Methods("GET")
 	api.HandleFunc("/connect/{name}", s.handleConnect).Methods("POST")
-	api.HandleFunc("/proxy/{connectionID}", s.handleProxy).Methods("POST", "GET", "PUT", "DELETE")
+
+	// Transparent proxy endpoint - accepts TCP connection and forwards to target
+	api.HandleFunc("/proxy/{connectionID}", s.handleProxyStream).Methods("POST", "GET", "PUT", "DELETE", "CONNECT")
 }
 
 // Start starts the HTTP server

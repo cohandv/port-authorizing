@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -17,6 +18,37 @@ type Connection struct {
 	Proxy     Protocol
 	CreatedAt time.Time
 	ExpiresAt time.Time
+
+	// Active TCP connections for this proxy connection
+	activeStreams map[net.Conn]bool
+	streamsMu     sync.Mutex
+}
+
+// RegisterStream registers an active TCP stream for this connection
+func (c *Connection) RegisterStream(conn net.Conn) {
+	c.streamsMu.Lock()
+	defer c.streamsMu.Unlock()
+	if c.activeStreams == nil {
+		c.activeStreams = make(map[net.Conn]bool)
+	}
+	c.activeStreams[conn] = true
+}
+
+// UnregisterStream removes a TCP stream from active tracking
+func (c *Connection) UnregisterStream(conn net.Conn) {
+	c.streamsMu.Lock()
+	defer c.streamsMu.Unlock()
+	delete(c.activeStreams, conn)
+}
+
+// CloseAllStreams forcefully closes all active TCP streams
+func (c *Connection) CloseAllStreams() {
+	c.streamsMu.Lock()
+	defer c.streamsMu.Unlock()
+	for conn := range c.activeStreams {
+		conn.Close()
+	}
+	c.activeStreams = make(map[net.Conn]bool)
 }
 
 // ConnectionManager manages active proxy connections
@@ -116,14 +148,20 @@ func (cm *ConnectionManager) CloseAll() {
 	cm.cleanupTicker.Stop()
 }
 
-// cleanupExpired removes expired connections
+// cleanupExpired removes expired connections and forcefully closes active streams
 func (cm *ConnectionManager) cleanupExpired() {
 	for range cm.cleanupTicker.C {
 		cm.mu.Lock()
 		now := time.Now()
 		for id, conn := range cm.connections {
 			if now.After(conn.ExpiresAt) {
+				// Forcefully close all active TCP streams for this connection
+				conn.CloseAllStreams()
+
+				// Close the protocol handler
 				conn.Proxy.Close()
+
+				// Remove from tracking
 				delete(cm.connections, id)
 			}
 		}

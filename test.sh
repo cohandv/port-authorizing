@@ -14,7 +14,25 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+
+# Interactive mode flag
+INTERACTIVE=false
+if [ "$1" = "--interactive" ] || [ "$1" = "-i" ]; then
+    INTERACTIVE=true
+    echo -e "${CYAN}Running in INTERACTIVE mode - press Enter after each step${NC}"
+    echo ""
+fi
+
+# Pause function
+pause() {
+    if [ "$INTERACTIVE" = true ]; then
+        echo ""
+        echo -e "${CYAN}Press Enter to continue...${NC}"
+        read -r
+    fi
+}
 
 # PIDs for cleanup
 API_PID=""
@@ -66,9 +84,12 @@ rm -f audit.log
 
 # Step 1: Start Docker services
 echo ""
-echo -e "${BLUE}Step 1: Starting Docker services (PostgreSQL + Nginx)...${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 1: Starting Docker services (PostgreSQL + Nginx)${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 docker compose down -v 2>/dev/null || true
 docker compose up -d
+pause
 
 # Wait for services to be healthy
 echo -e "${BLUE}Waiting for services to be healthy...${NC}"
@@ -90,13 +111,18 @@ for i in {1..30}; do
 done
 
 # Verify Nginx is accessible
+echo ""
 echo -e "${BLUE}Testing direct Nginx access...${NC}"
-if curl -s http://localhost:8888/ | grep -q "Port Authorizing"; then
+NGINX_RESPONSE=$(curl -s http://localhost:8888/)
+if echo "$NGINX_RESPONSE" | grep -q "Port Authorizing"; then
     echo -e "${GREEN}✓ Nginx is accessible on port 8888${NC}"
+    echo -e "${YELLOW}Response preview:${NC}"
+    echo "$NGINX_RESPONSE" | head -5
 else
     echo -e "${RED}✗ Nginx is not accessible${NC}"
     exit 1
 fi
+pause
 
 # Verify PostgreSQL is accessible
 echo -e "${BLUE}Testing direct PostgreSQL access...${NC}"
@@ -109,10 +135,13 @@ fi
 
 # Step 2: Start API server
 echo ""
-echo -e "${BLUE}Step 2: Starting API server...${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 2: Starting API server${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 ./bin/port-authorizing-api --config config.yaml > api.log 2>&1 &
 API_PID=$!
 echo -e "${GREEN}✓ API server started (PID: $API_PID)${NC}"
+pause
 
 # Wait for API to be ready
 echo -e "${BLUE}Waiting for API server to be ready...${NC}"
@@ -131,38 +160,56 @@ done
 
 # Step 3: Test API health
 echo ""
-echo -e "${BLUE}Step 3: Testing API health endpoint...${NC}"
-if curl -s http://localhost:8080/api/health | grep -q "healthy"; then
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 3: Testing API health endpoint${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+HEALTH_RESPONSE=$(curl -s http://localhost:8080/api/health)
+echo -e "${YELLOW}Response:${NC} $HEALTH_RESPONSE"
+if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
     echo -e "${GREEN}✓ API health check passed${NC}"
 else
     echo -e "${RED}✗ API health check failed${NC}"
     exit 1
 fi
+pause
 
 # Step 4: Login with CLI
 echo ""
-echo -e "${BLUE}Step 4: Testing CLI login...${NC}"
-if ./bin/port-authorizing-cli login -u admin -p admin123 2>&1 | grep -q "Successfully logged in"; then
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 4: Testing CLI login${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+LOGIN_OUTPUT=$(./bin/port-authorizing-cli login -u admin -p admin123 2>&1)
+echo -e "${YELLOW}Login output:${NC}"
+echo "$LOGIN_OUTPUT"
+if echo "$LOGIN_OUTPUT" | grep -q "Successfully logged in"; then
     echo -e "${GREEN}✓ CLI login successful${NC}"
 else
     echo -e "${RED}✗ CLI login failed${NC}"
     exit 1
 fi
+pause
 
 # Step 5: List connections
 echo ""
-echo -e "${BLUE}Step 5: Listing available connections...${NC}"
-./bin/port-authorizing-cli list
-if ./bin/port-authorizing-cli list 2>&1 | grep -q "nginx-server"; then
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 5: Listing available connections${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+LIST_OUTPUT=$(./bin/port-authorizing-cli list 2>&1)
+echo "$LIST_OUTPUT"
+if echo "$LIST_OUTPUT" | grep -q "nginx-server"; then
+    echo ""
     echo -e "${GREEN}✓ Connections listed successfully${NC}"
 else
     echo -e "${RED}✗ Failed to list connections${NC}"
     exit 1
 fi
+pause
 
 # Step 6: Test HTTP proxy through Nginx
 echo ""
-echo -e "${BLUE}Step 6: Testing HTTP proxy (CLI → API → Nginx)...${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 6: Testing HTTP proxy (CLI → API → Nginx)${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 
 # Get JWT token
 TOKEN=$(curl -s -X POST http://localhost:8080/api/login \
@@ -173,9 +220,7 @@ TOKEN=$(curl -s -X POST http://localhost:8080/api/login \
 # Create connection to Nginx
 echo -e "${BLUE}Creating connection to nginx-server...${NC}"
 CONN_RESPONSE=$(curl -s -X POST http://localhost:8080/api/connect/nginx-server \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"duration":"300000000000"}')
+    -H "Authorization: Bearer $TOKEN")
 
 CONNECTION_ID=$(echo "$CONN_RESPONSE" | grep -o '"connection_id":"[^"]*' | cut -d'"' -f4)
 
@@ -186,8 +231,12 @@ if [ -z "$CONNECTION_ID" ]; then
 fi
 
 echo -e "${GREEN}✓ Connection created: $CONNECTION_ID${NC}"
+echo -e "${YELLOW}Connection details:${NC}"
+echo "$CONN_RESPONSE" | jq '.' 2>/dev/null || echo "$CONN_RESPONSE"
+pause
 
 # Test proxying through API
+echo ""
 echo -e "${BLUE}Testing HTTP GET through proxy...${NC}"
 PROXY_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$CONNECTION_ID \
     -H "Authorization: Bearer $TOKEN" \
@@ -199,13 +248,19 @@ Connection: close
 ")
 
 # Accept either HTML response or any response from Nginx (indicates proxy is working)
+echo -e "${YELLOW}Proxy response (first 500 chars):${NC}"
+echo "$PROXY_RESPONSE" | head -c 500
+echo ""
+echo ""
+
 if echo "$PROXY_RESPONSE" | grep -qE "(Port Authorizing|Nginx|nginx|success)"; then
     echo -e "${GREEN}✓ HTTP proxy successful! Got response from Nginx${NC}"
 else
     echo -e "${RED}✗ HTTP proxy failed${NC}"
-    echo "Response: $PROXY_RESPONSE"
+    echo "Full response: $PROXY_RESPONSE"
     exit 1
 fi
+pause
 
 # Test /api/ endpoint
 echo -e "${BLUE}Testing HTTP GET to /api/ endpoint...${NC}"
@@ -218,22 +273,28 @@ Connection: close
 
 ")
 
+echo -e "${YELLOW}API endpoint response:${NC}"
+echo "$API_RESPONSE" | head -c 200
+echo ""
+echo ""
+
 if echo "$API_RESPONSE" | grep -qE "(success|Nginx)"; then
     echo -e "${GREEN}✓ HTTP API proxy successful!${NC}"
 else
-    echo -e "${YELLOW}⚠ HTTP API proxy returned: $API_RESPONSE${NC}"
+    echo -e "${YELLOW}⚠ HTTP API proxy returned unexpected response${NC}"
 fi
+pause
 
 # Step 7: Test PostgreSQL proxy
 echo ""
-echo -e "${BLUE}Step 7: Testing PostgreSQL proxy (CLI → API → PostgreSQL)...${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 7: Testing PostgreSQL proxy (CLI → API → PostgreSQL)${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 
 # Create connection to PostgreSQL
 echo -e "${BLUE}Creating connection to postgres-test...${NC}"
 PG_CONN_RESPONSE=$(curl -s -X POST http://localhost:8080/api/connect/postgres-test \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d '{"duration":"300000000000"}')
+    -H "Authorization: Bearer $TOKEN")
 
 PG_CONNECTION_ID=$(echo "$PG_CONN_RESPONSE" | grep -o '"connection_id":"[^"]*' | cut -d'"' -f4)
 
@@ -244,8 +305,12 @@ if [ -z "$PG_CONNECTION_ID" ]; then
 fi
 
 echo -e "${GREEN}✓ PostgreSQL connection created: $PG_CONNECTION_ID${NC}"
+echo -e "${YELLOW}Connection details:${NC}"
+echo "$PG_CONN_RESPONSE" | jq '.' 2>/dev/null || echo "$PG_CONN_RESPONSE"
+pause
 
 # Test PostgreSQL query through proxy (using HTTP for now since it's simplified)
+echo ""
 echo -e "${BLUE}Testing SELECT query through proxy...${NC}"
 PG_QUERY="SELECT * FROM users LIMIT 3;"
 PG_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$PG_CONNECTION_ID \
@@ -254,9 +319,14 @@ PG_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$PG_CONNECTION_ID 
     -d "$PG_QUERY")
 
 echo -e "${GREEN}✓ PostgreSQL proxy query sent${NC}"
-echo "Response: $PG_RESPONSE"
+echo -e "${YELLOW}Response:${NC}"
+echo "$PG_RESPONSE" | head -c 300
+echo ""
+echo ""
+pause
 
 # Test INSERT query (should be allowed by whitelist)
+echo ""
 echo -e "${BLUE}Testing INSERT query through proxy...${NC}"
 PG_INSERT="INSERT INTO logs (log_level, message) VALUES ('INFO', 'Test from proxy');"
 PG_INSERT_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$PG_CONNECTION_ID \
@@ -265,10 +335,16 @@ PG_INSERT_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$PG_CONNECT
     -d "$PG_INSERT")
 
 echo -e "${GREEN}✓ PostgreSQL INSERT query sent${NC}"
+echo -e "${YELLOW}Response:${NC}"
+echo "$PG_INSERT_RESPONSE" | head -c 200
+echo ""
+pause
 
 # Step 8: Verify audit logs
 echo ""
-echo -e "${BLUE}Step 8: Verifying audit logs...${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}Step 8: Verifying audit logs${NC}"
+echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
 
 # Wait a moment for logs to be written
 sleep 1
@@ -337,11 +413,17 @@ BLOCKED_RESPONSE=$(curl -s -X POST http://localhost:8080/api/proxy/$PG_CONNECTIO
     -H "Content-Type: application/octet-stream" \
     -d "$BLOCKED_QUERY")
 
+echo -e "${YELLOW}Blocked query response:${NC}"
+echo "$BLOCKED_RESPONSE" | head -c 200
+echo ""
+echo ""
+
 if echo "$BLOCKED_RESPONSE" | grep -q "blocked"; then
     echo -e "${GREEN}✓ Whitelist validation working - DELETE query blocked${NC}"
 else
-    echo -e "${YELLOW}⚠ Whitelist response: $BLOCKED_RESPONSE${NC}"
+    echo -e "${YELLOW}⚠ Whitelist response (may not be fully implemented yet)${NC}"
 fi
+pause
 
 # Summary
 echo ""

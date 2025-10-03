@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,19 +19,17 @@ import (
 var connectCmd = &cobra.Command{
 	Use:   "connect [connection-name]",
 	Short: "Connect to a service via proxy",
-	Long:  "Establish a local proxy connection to a remote service through the API",
+	Long:  "Establish a local proxy connection to a remote service through the API. Duration is controlled by API server configuration.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runConnect,
 }
 
 var (
 	localPort int
-	duration  string
 )
 
 func init() {
 	connectCmd.Flags().IntVarP(&localPort, "local-port", "l", 0, "Local port to listen on (required)")
-	connectCmd.Flags().StringVarP(&duration, "duration", "d", "1h", "Connection duration (e.g., 30m, 1h, 2h)")
 	connectCmd.MarkFlagRequired("local-port")
 }
 
@@ -52,20 +51,18 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not logged in. Please run 'login' first: %w", err)
 	}
 
-	// Request connection from API
-	reqBody := connectRequest{Duration: duration}
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+	// Validate token is still valid
+	if err := validateToken(token); err != nil {
+		return fmt.Errorf("authentication expired or invalid: %w\nPlease login again: ./port-authorizing-cli login", err)
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/connect/%s", apiURL, connectionName), bytes.NewBuffer(data))
+	// Request connection from API (duration is set by server config)
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/connect/%s", apiURL, connectionName), nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -92,17 +89,18 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Connection ID: %s\n", connResp.ConnectionID)
 	fmt.Printf("  Expires at: %s\n", connResp.ExpiresAt)
 	fmt.Printf("  Local port: %d\n", localPort)
+	fmt.Printf("  Server will auto-disconnect at expiry\n")
 	fmt.Println("\nStarting local proxy server...")
 
-	// Start local proxy server
-	if err := startLocalProxy(localPort, connResp.ConnectionID, token); err != nil {
+	// Start local proxy server with expiry time
+	if err := startLocalProxy(localPort, connResp.ConnectionID, token, connResp.ExpiresAt); err != nil {
 		return fmt.Errorf("failed to start local proxy: %w", err)
 	}
 
 	return nil
 }
 
-func startLocalProxy(port int, connectionID, token string) error {
+func startLocalProxy(port int, connectionID, token string, expiresAt string) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
@@ -110,11 +108,30 @@ func startLocalProxy(port int, connectionID, token string) error {
 	defer listener.Close()
 
 	fmt.Printf("✓ Proxy server listening on localhost:%d\n", port)
+	fmt.Printf("Connection will expire at: %s\n", expiresAt)
 	fmt.Println("Press Ctrl+C to stop")
 
 	// Handle interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Parse expiry time
+	expiry, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		fmt.Printf("Warning: could not parse expiry time: %v\n", err)
+	} else {
+		// Start timeout monitor
+		go func() {
+			timeUntilExpiry := time.Until(expiry)
+			if timeUntilExpiry > 0 {
+				<-time.After(timeUntilExpiry)
+				fmt.Printf("\n⏱  Connection timeout reached at %s\n", expiresAt)
+				fmt.Println("Server has disconnected the connection.")
+				fmt.Println("Run 'connect' again to establish a new connection.")
+				os.Exit(0)
+			}
+		}()
+	}
 
 	// Accept connections in goroutine
 	connChan := make(chan net.Conn)
@@ -143,34 +160,62 @@ func startLocalProxy(port int, connectionID, token string) error {
 func handleLocalConnection(localConn net.Conn, connectionID, token string) {
 	defer localConn.Close()
 
-	// Read data from local connection
-	buf := make([]byte, 32*1024)
-	n, err := localConn.Read(buf)
+	// Parse API URL to get host and port
+	apiHost := strings.TrimPrefix(apiURL, "http://")
+	apiHost = strings.TrimPrefix(apiHost, "https://")
+
+	// Establish TCP connection to API server
+	apiConn, err := net.DialTimeout("tcp", apiHost, 10*time.Second)
 	if err != nil {
-		fmt.Printf("Error reading from local connection: %v\n", err)
+		fmt.Printf("Error connecting to API: %v\n", err)
+		return
+	}
+	defer apiConn.Close()
+
+	// Send HTTP CONNECT request with auth to establish tunnel
+	connectReq := fmt.Sprintf("POST /api/proxy/%s HTTP/1.1\r\n"+
+		"Host: %s\r\n"+
+		"Authorization: Bearer %s\r\n"+
+		"Connection: Upgrade\r\n"+
+		"\r\n", connectionID, apiHost, token)
+
+	_, err = apiConn.Write([]byte(connectReq))
+	if err != nil {
+		fmt.Printf("Error sending connect request: %v\n", err)
 		return
 	}
 
-	// Forward to API proxy
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/proxy/%s", apiURL, connectionID), bytes.NewBuffer(buf[:n]))
+	// Read HTTP response
+	buf := make([]byte, 4096)
+	n, err := apiConn.Read(buf)
 	if err != nil {
-		fmt.Printf("Error creating request: %v\n", err)
+		fmt.Printf("Error reading response: %v\n", err)
 		return
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error forwarding request: %v\n", err)
+	response := string(buf[:n])
+	if !strings.Contains(response, "200") {
+		fmt.Printf("Connection failed: %s\n", response)
 		return
 	}
-	defer resp.Body.Close()
 
-	// Forward response back to local connection
-	io.Copy(localConn, resp.Body)
+	// Now we have a transparent tunnel - bidirectionally copy data
+	done := make(chan error, 2)
+
+	// Local client → API → Target
+	go func() {
+		_, err := io.Copy(apiConn, localConn)
+		done <- err
+	}()
+
+	// Target → API → Local client
+	go func() {
+		_, err := io.Copy(localConn, apiConn)
+		done <- err
+	}()
+
+	// Wait for one direction to finish
+	<-done
 }
 
 func loadToken() (string, error) {
@@ -191,4 +236,39 @@ func loadToken() (string, error) {
 	}
 
 	return token, nil
+}
+
+// validateToken checks if JWT token is still valid
+func validateToken(token string) error {
+	// Split JWT token (format: header.payload.signature)
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid token format")
+	}
+
+	// Decode payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return fmt.Errorf("failed to decode token: %w", err)
+	}
+
+	// Parse payload JSON
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return fmt.Errorf("failed to parse token claims: %w", err)
+	}
+
+	// Check if token is expired
+	if claims.Exp == 0 {
+		return fmt.Errorf("token has no expiration")
+	}
+
+	expiryTime := time.Unix(claims.Exp, 0)
+	if time.Now().After(expiryTime) {
+		return fmt.Errorf("token expired at %s", expiryTime.Format(time.RFC3339))
+	}
+
+	return nil
 }

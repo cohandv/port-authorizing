@@ -44,6 +44,7 @@ type ConnectionConfig struct {
 	Host      string            `yaml:"host"`
 	Port      int               `yaml:"port"`
 	Scheme    string            `yaml:"scheme,omitempty"`    // for HTTP: http/https
+	Duration  time.Duration     `yaml:"duration,omitempty"`  // connection timeout duration
 	Whitelist []string          `yaml:"whitelist,omitempty"` // regex patterns
 	Metadata  map[string]string `yaml:"metadata,omitempty"`
 }

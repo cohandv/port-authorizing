@@ -9,16 +9,16 @@ auth:
   # Authentication providers
   providers:
     # Uncomment to enable Keycloak OIDC
-    # - name: keycloak
-    #   type: oidc
-    #   enabled: true
-    #   config:
-    #     issuer: "http://localhost:8180/realms/portauth"
-    #     client_id: "port-authorizing"
-    #     client_secret: "your-client-secret-change-in-production"
-    #     redirect_url: "http://localhost:8080/auth/callback/oidc"
-    #     roles_claim: "roles"
-    #     username_claim: "preferred_username"
+    - name: keycloak
+      type: oidc
+      enabled: true
+      config:
+        issuer: "http://localhost:8180/realms/portauth"
+        client_id: "port-authorizing"
+        client_secret: "your-client-secret-change-in-production"
+        redirect_url: "http://localhost:8080/api/auth/oidc/callback"
+        roles_claim: "roles"
+        username_claim: "preferred_username"
 
     # Uncomment to enable LDAP
     # - name: ldap

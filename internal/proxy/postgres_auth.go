@@ -74,8 +74,8 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		return err
 	}
 
-	// Read password from client
-	clientPassword, err := p.readPassword(clientConn)
+	// Read password from client (but don't validate it - JWT already authenticated the user)
+	_, err = p.readPassword(clientConn)
 	if err != nil {
 		return err
 	}
@@ -92,16 +92,15 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		return fmt.Errorf("username mismatch: client=%s, authenticated=%s", clientUser, p.username)
 	}
 
-	// Validate API credentials
-	if !p.validateAPICredentials(clientUser, clientPassword) {
-		p.sendAuthError(clientConn, "Invalid API credentials")
-		audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
-			"connection_id": p.connectionID,
-			"client_user":   clientUser,
-			"reason":        "invalid_credentials",
-		})
-		return fmt.Errorf("invalid API credentials: %s", clientUser)
-	}
+	// NOTE: Password validation is SKIPPED because authentication already happened at the API/JWT level
+	// The connection was established with a valid JWT token, so the user is already authenticated.
+	// We accept any password here since the real authentication is the JWT token.
+	// This allows OIDC/SAML users (who don't have local passwords) to connect.
+	audit.Log(p.auditLogPath, p.username, "postgres_client_auth", p.config.Name, map[string]interface{}{
+		"connection_id": p.connectionID,
+		"client_user":   clientUser,
+		"note":          "password validation skipped - already authenticated via JWT",
+	})
 
 	// Connect to backend with BACKEND credentials
 	backendAddr := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)

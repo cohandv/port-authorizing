@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/davidcohan/port-authorizing/internal/config"
@@ -52,7 +53,7 @@ func NewOIDCProvider(cfg config.AuthProviderConfig) (*OIDCProvider, error) {
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "roles"},
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
@@ -188,4 +189,106 @@ func (p *OIDCProvider) Type() string {
 // GetAuthURL returns the OAuth2 authorization URL
 func (p *OIDCProvider) GetAuthURL(state string) string {
 	return p.oauth2Config.AuthCodeURL(state)
+}
+
+// GetIssuer returns the OIDC issuer URL
+func (p *OIDCProvider) GetIssuer() string {
+	return p.provider.Endpoint().AuthURL[:strings.LastIndex(p.provider.Endpoint().AuthURL, "/protocol")]
+}
+
+// GetClientID returns the OAuth2 client ID
+func (p *OIDCProvider) GetClientID() string {
+	return p.oauth2Config.ClientID
+}
+
+// GetClientSecret returns the OAuth2 client secret
+func (p *OIDCProvider) GetClientSecret() string {
+	return p.oauth2Config.ClientSecret
+}
+
+// GetUsernameClaim returns the username claim name
+func (p *OIDCProvider) GetUsernameClaim() string {
+	return p.usernameClaim
+}
+
+// GetRolesClaim returns the roles claim name
+func (p *OIDCProvider) GetRolesClaim() string {
+	return p.rolesClaim
+}
+
+// IsEnabled returns whether the provider is enabled
+func (p *OIDCProvider) IsEnabled() bool {
+	return true // Providers are only created if enabled
+}
+
+// GetAuthorizationURL builds the OIDC authorization URL
+func (p *OIDCProvider) GetAuthorizationURL(state, redirectURL string) (string, error) {
+	return p.oauth2Config.AuthCodeURL(state), nil
+}
+
+// ExchangeCodeForToken exchanges authorization code for access token and user info
+func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo, error) {
+	ctx := context.Background()
+
+	// Exchange authorization code for tokens
+	token, err := p.oauth2Config.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code: %w", err)
+	}
+
+	// Extract ID token
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok || rawIDToken == "" {
+		return nil, fmt.Errorf("no id_token in response")
+	}
+
+	// Verify ID token
+	idToken, err := p.verifier.Verify(ctx, rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify ID token: %w", err)
+	}
+
+	// Extract claims
+	var claims map[string]interface{}
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("failed to parse claims: %w", err)
+	}
+
+	// Extract username
+	username, _ := claims[p.usernameClaim].(string)
+	if username == "" {
+		username, _ = claims["sub"].(string)
+	}
+
+	// Extract email
+	email, _ := claims["email"].(string)
+
+	// Extract roles
+	roles := []string{}
+	if rolesInterface, ok := claims[p.rolesClaim]; ok {
+		switch v := rolesInterface.(type) {
+		case []interface{}:
+			for _, role := range v {
+				if roleStr, ok := role.(string); ok {
+					roles = append(roles, roleStr)
+				}
+			}
+		case []string:
+			roles = v
+		case string:
+			roles = []string{v}
+		}
+	}
+
+	sub, _ := claims["sub"].(string)
+
+	return &UserInfo{
+		Username: username,
+		Email:    email,
+		Roles:    roles,
+		Metadata: map[string]string{
+			"provider": p.name,
+			"subject":  sub,
+		},
+	}, nil
 }

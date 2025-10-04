@@ -77,6 +77,11 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 	return m, nil
 }
 
+// GetProviders returns all configured providers
+func (m *Manager) GetProviders() []Provider {
+	return m.providers
+}
+
 // Authenticate tries each provider in order
 func (m *Manager) Authenticate(credentials map[string]string) (*UserInfo, error) {
 	var lastErr error
@@ -94,9 +99,4 @@ func (m *Manager) Authenticate(credentials map[string]string) (*UserInfo, error)
 	}
 
 	return nil, fmt.Errorf("authentication failed: no providers available")
-}
-
-// GetProviders returns all configured providers
-func (m *Manager) GetProviders() []Provider {
-	return m.providers
 }

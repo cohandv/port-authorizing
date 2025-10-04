@@ -46,6 +46,10 @@ func (s *Server) setupRoutes() {
 	// Public routes
 	s.router.HandleFunc("/api/login", s.handleLogin).Methods("POST")
 	s.router.HandleFunc("/api/health", s.handleHealth).Methods("GET")
+	
+	// OIDC authentication routes (public)
+	s.router.HandleFunc("/api/auth/oidc/login", s.handleOIDCLogin).Methods("GET")
+	s.router.HandleFunc("/api/auth/oidc/callback", s.handleOIDCCallback).Methods("GET")
 
 	// Protected routes (require authentication)
 	api := s.router.PathPrefix("/api").Subrouter()

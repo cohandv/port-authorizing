@@ -91,7 +91,7 @@
       "secret": "your-client-secret-change-in-production",
       "redirectUris": [
         "http://localhost:8080/*",
-        "http://localhost:8080/auth/callback/oidc"
+        "http://localhost:8080/api/auth/oidc/callback"
       ],
       "webOrigins": [
         "http://localhost:8080"

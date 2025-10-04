@@ -15,20 +15,20 @@ import (
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Login to the API server",
-	Long:  "Authenticate with the API server and store the token locally",
+	Long:  "Authenticate with the API server using local credentials or OIDC browser flow",
 	RunE:  runLogin,
 }
 
 var (
-	username string
-	password string
+	username      string
+	password      string
+	loginProvider string
 )
 
 func init() {
-	loginCmd.Flags().StringVarP(&username, "username", "u", "", "Username (required)")
-	loginCmd.Flags().StringVarP(&password, "password", "p", "", "Password (required)")
-	loginCmd.MarkFlagRequired("username")
-	loginCmd.MarkFlagRequired("password")
+	loginCmd.Flags().StringVarP(&username, "username", "u", "", "Username (for local auth)")
+	loginCmd.Flags().StringVarP(&password, "password", "p", "", "Password (for local auth)")
+	loginCmd.Flags().StringVar(&loginProvider, "provider", "", "Authentication provider: local, oidc (auto-detects if not specified)")
 }
 
 type loginRequest struct {
@@ -39,9 +39,32 @@ type loginRequest struct {
 type loginResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
+	User      struct {
+		Username string   `json:"username"`
+		Email    string   `json:"email"`
+		Roles    []string `json:"roles"`
+	} `json:"user"`
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
+	// Determine authentication method
+	if loginProvider == "oidc" {
+		return runOIDCLogin()
+	}
+
+	// If no username/password provided, default to OIDC flow
+	if username == "" && password == "" && loginProvider == "" {
+		fmt.Println("No credentials provided. Using browser-based OIDC authentication.")
+		fmt.Println("(Use -u and -p flags for local username/password authentication)")
+		fmt.Println("")
+		return runOIDCLogin()
+	}
+
+	// Local username/password authentication
+	if username == "" || password == "" {
+		return fmt.Errorf("username and password are required for local authentication")
+	}
+
 	// Prepare login request
 	reqBody := loginRequest{
 		Username: username,
@@ -80,7 +103,10 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to save token: %w", err)
 	}
 
-	fmt.Printf("✓ Successfully logged in as %s\n", username)
+	fmt.Printf("✓ Successfully logged in as %s\n", loginResp.User.Username)
+	if len(loginResp.User.Roles) > 0 {
+		fmt.Printf("  Roles: %v\n", loginResp.User.Roles)
+	}
 	fmt.Printf("Token expires at: %s\n", loginResp.ExpiresAt)
 
 	return nil

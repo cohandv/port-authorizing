@@ -48,7 +48,7 @@ services:
       KC_HTTP_ENABLED: true
     ports:
       - "8180:8180"
-    command: start-dev --http-port=8180
+    command: start-dev --http-port=8180 --import-realm
     volumes:
       - keycloak_data:/opt/keycloak/data
       - ./docker/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro

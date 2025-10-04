@@ -37,6 +37,8 @@ type connectResponse struct {
 	ConnectionID string `json:"connection_id"`
 	ExpiresAt    string `json:"expires_at"`
 	ProxyURL     string `json:"proxy_url"`
+	Type         string `json:"type,omitempty"`     // Connection type (postgres, http, tcp)
+	Database     string `json:"database,omitempty"` // For postgres connections
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
@@ -86,6 +88,24 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Expires at: %s\n", connResp.ExpiresAt)
 	fmt.Printf("  Local port: %d\n", localPort)
 	fmt.Printf("  Server will auto-disconnect at expiry\n")
+
+	// Show connection examples based on service type
+	if connResp.Type == "postgres" {
+		// Extract username from token for display
+		username, _ := getUsernameFromToken(token)
+		fmt.Printf("\n📝 PostgreSQL Connection Info:\n")
+		fmt.Printf("  Use your API credentials to connect:\n")
+		fmt.Printf("  • Username: %s\n", username)
+		fmt.Printf("  • Password: <your API password>\n")
+		fmt.Printf("  • Database: %s\n", connResp.Database)
+		fmt.Printf("\n  Connection string:\n")
+		fmt.Printf("  psql -h localhost -p %d -U %s -d %s\n", localPort, username, connResp.Database)
+		fmt.Printf("  or\n")
+		fmt.Printf("  postgresql://%s:<password>@localhost:%d/%s\n", username, localPort, connResp.Database)
+		fmt.Printf("\n  🔒 Backend credentials are hidden - managed by server.\n")
+		fmt.Printf("  🔒 All queries logged with your username.\n")
+	}
+
 	fmt.Println("\nStarting local proxy server...")
 
 	// Start local proxy server with expiry time
@@ -267,4 +287,26 @@ func validateToken(token string) error {
 	}
 
 	return nil
+}
+
+// getUsernameFromToken extracts the username from a JWT token
+func getUsernameFromToken(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("invalid token format")
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("failed to decode token: %w", err)
+	}
+
+	var claims struct {
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", fmt.Errorf("failed to parse token claims: %w", err)
+	}
+
+	return claims.Username, nil
 }

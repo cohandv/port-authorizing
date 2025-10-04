@@ -79,10 +79,17 @@ func (cm *ConnectionManager) CreateConnection(username string, connConfig *confi
 	defer cm.mu.Unlock()
 
 	// Create protocol-specific proxy
-	proxy, err := NewProtocol(connConfig)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to create proxy: %w", err)
+	// Note: postgres doesn't use the Protocol interface, it has a dedicated handler
+	var proxy Protocol
+	var err error
+
+	if connConfig.Type != "postgres" {
+		proxy, err = NewProtocol(connConfig)
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("failed to create proxy: %w", err)
+		}
 	}
+	// For postgres, Proxy will be nil - it's handled by handlePostgresProxy
 
 	// Generate unique connection ID
 	connectionID := uuid.New().String()
@@ -129,7 +136,9 @@ func (cm *ConnectionManager) CloseConnection(connectionID string) error {
 		return fmt.Errorf("connection not found")
 	}
 
-	conn.Proxy.Close()
+	if conn.Proxy != nil {
+		conn.Proxy.Close()
+	}
 	delete(cm.connections, connectionID)
 
 	return nil
@@ -141,7 +150,9 @@ func (cm *ConnectionManager) CloseAll() {
 	defer cm.mu.Unlock()
 
 	for _, conn := range cm.connections {
-		conn.Proxy.Close()
+		if conn.Proxy != nil {
+			conn.Proxy.Close()
+		}
 	}
 
 	cm.connections = make(map[string]*Connection)
@@ -158,8 +169,10 @@ func (cm *ConnectionManager) cleanupExpired() {
 				// Forcefully close all active TCP streams for this connection
 				conn.CloseAllStreams()
 
-				// Close the protocol handler
-				conn.Proxy.Close()
+				// Close the protocol handler (if not postgres)
+				if conn.Proxy != nil {
+					conn.Proxy.Close()
+				}
 
 				// Remove from tracking
 				delete(cm.connections, id)

@@ -12,7 +12,7 @@ import (
 )
 
 // handleProxyStream handles transparent TCP streaming to target service
-// This doesn't parse any protocol - it's a pure TCP proxy
+// Routes to appropriate protocol handler based on connection type
 func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value("username").(string)
 	vars := mux.Vars(r)
@@ -30,6 +30,14 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusForbidden, "Access denied")
 		return
 	}
+
+	// Route to appropriate handler based on connection type
+	if conn.Config.Type == "postgres" {
+		s.handlePostgresProxy(w, r)
+		return
+	}
+
+	// For other types (http, tcp), use transparent TCP proxy
 
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_stream", conn.Config.Name, map[string]interface{}{

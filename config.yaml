@@ -21,7 +21,11 @@ connections:
     type: postgres
     host: localhost
     port: 5432
-    duration: 30m  # Auto-disconnect after 30 minutes
+    duration: 3m  # Auto-disconnect after 3 minutes
+    # Backend credentials (used by proxy to connect to real database)
+    backend_username: "testuser"
+    backend_password: "testpass"
+    backend_database: "testdb"
     whitelist:
       - "^SELECT.*"
       - "^INSERT INTO logs.*"
@@ -29,6 +33,7 @@ connections:
     metadata:
       description: "Test PostgreSQL database (Docker)"
       environment: "test"
+      # These are just for display/documentation
       database: "testdb"
       username: "testuser"
 

@@ -47,6 +47,10 @@ type ConnectionConfig struct {
 	Duration  time.Duration     `yaml:"duration,omitempty"`  // connection timeout duration
 	Whitelist []string          `yaml:"whitelist,omitempty"` // regex patterns
 	Metadata  map[string]string `yaml:"metadata,omitempty"`
+	// Backend credentials (for protocols like Postgres where proxy re-authenticates)
+	BackendUsername string `yaml:"backend_username,omitempty"`
+	BackendPassword string `yaml:"backend_password,omitempty"`
+	BackendDatabase string `yaml:"backend_database,omitempty"`
 }
 
 // SecurityConfig contains security settings

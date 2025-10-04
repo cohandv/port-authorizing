@@ -16,12 +16,14 @@ type Protocol interface {
 }
 
 // NewProtocol creates a protocol handler based on connection type
+// Note: Postgres uses a different handler (handlePostgresProxy) and doesn't use this interface
 func NewProtocol(connConfig *config.ConnectionConfig) (Protocol, error) {
 	switch connConfig.Type {
 	case "http", "https":
 		return NewHTTPProxy(connConfig), nil
 	case "postgres":
-		return NewPostgresProxy(connConfig), nil
+		// Postgres handled separately via handlePostgresProxy in API
+		return nil, fmt.Errorf("postgres protocol uses dedicated handler, not this interface")
 	case "tcp":
 		return NewTCPProxy(connConfig), nil
 	default:

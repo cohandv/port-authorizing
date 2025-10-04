@@ -28,6 +28,8 @@ type ConnectResponse struct {
 	ConnectionID string    `json:"connection_id"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	ProxyURL     string    `json:"proxy_url"`
+	Type         string    `json:"type,omitempty"`     // Connection type
+	Database     string    `json:"database,omitempty"` // For postgres connections
 }
 
 // handleListConnections returns list of available connections
@@ -39,10 +41,19 @@ func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 
 	connections := make([]ConnectionInfo, 0, len(s.config.Connections))
 	for _, conn := range s.config.Connections {
+		// Only include name, type, and description (not credentials or other metadata)
+		displayMetadata := make(map[string]string)
+		if desc, ok := conn.Metadata["description"]; ok {
+			displayMetadata["description"] = desc
+		}
+		if env, ok := conn.Metadata["environment"]; ok {
+			displayMetadata["environment"] = env
+		}
+
 		connections = append(connections, ConnectionInfo{
 			Name:     conn.Name,
 			Type:     conn.Type,
-			Metadata: conn.Metadata,
+			Metadata: displayMetadata,
 		})
 	}
 
@@ -93,11 +104,22 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		"duration":      duration.String(),
 	})
 
-	respondJSON(w, http.StatusOK, ConnectResponse{
+	response := ConnectResponse{
 		ConnectionID: connectionID,
 		ExpiresAt:    expiresAt,
 		ProxyURL:     fmt.Sprintf("/api/proxy/%s", connectionID),
-	})
+		Type:         connConfig.Type,
+	}
+
+	// Add database info for Postgres connections
+	if connConfig.Type == "postgres" {
+		response.Database = connConfig.BackendDatabase
+		if response.Database == "" {
+			response.Database = connConfig.Metadata["database"]
+		}
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // handleProxy handles proxying requests to the actual endpoint

@@ -15,6 +15,7 @@ import (
 type ConnectionInfo struct {
 	Name     string            `json:"name"`
 	Type     string            `json:"type"`
+	Tags     []string          `json:"tags,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
@@ -35,13 +36,28 @@ type ConnectResponse struct {
 // handleListConnections returns list of available connections
 func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value("username").(string)
+	roles, _ := r.Context().Value("roles").([]string)
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "list_connections", "", nil)
+	audit.Log(s.config.Logging.AuditLogPath, username, "list_connections", "", map[string]interface{}{
+		"roles": roles,
+	})
 
-	connections := make([]ConnectionInfo, 0, len(s.config.Connections))
+	// Get accessible connections based on roles
+	accessibleNames := s.authz.ListAccessibleConnections(roles)
+	accessibleMap := make(map[string]bool)
+	for _, name := range accessibleNames {
+		accessibleMap[name] = true
+	}
+
+	connections := make([]ConnectionInfo, 0)
 	for _, conn := range s.config.Connections {
-		// Only include name, type, and description (not credentials or other metadata)
+		// Only include connections the user has access to
+		if !accessibleMap[conn.Name] {
+			continue
+		}
+
+		// Only include safe metadata (not credentials)
 		displayMetadata := make(map[string]string)
 		if desc, ok := conn.Metadata["description"]; ok {
 			displayMetadata["description"] = desc
@@ -53,6 +69,7 @@ func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 		connections = append(connections, ConnectionInfo{
 			Name:     conn.Name,
 			Type:     conn.Type,
+			Tags:     conn.Tags,
 			Metadata: displayMetadata,
 		})
 	}
@@ -63,6 +80,7 @@ func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 // handleConnect establishes a new proxy connection
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value("username").(string)
+	roles, _ := r.Context().Value("roles").([]string)
 	vars := mux.Vars(r)
 	connectionName := vars["name"]
 
@@ -77,6 +95,16 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	if connConfig == nil {
 		respondError(w, http.StatusNotFound, "Connection not found")
+		return
+	}
+
+	// Check authorization
+	if !s.authz.CanAccessConnection(roles, connectionName) {
+		audit.Log(s.config.Logging.AuditLogPath, username, "connect_denied", connectionName, map[string]interface{}{
+			"roles":  roles,
+			"reason": "insufficient permissions",
+		})
+		respondError(w, http.StatusForbidden, "Access denied: insufficient permissions for this connection")
 		return
 	}
 
@@ -102,6 +130,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	audit.Log(s.config.Logging.AuditLogPath, username, "connect", connectionName, map[string]interface{}{
 		"connection_id": connectionID,
 		"duration":      duration.String(),
+		"roles":         roles,
 	})
 
 	response := ConnectResponse{

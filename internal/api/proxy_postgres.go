@@ -13,6 +13,7 @@ import (
 // This creates a transparent TCP tunnel but with protocol-aware query logging
 func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value("username").(string)
+	roles, _ := r.Context().Value("roles").([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -35,10 +36,15 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get whitelist for this user's roles and connection
+	whitelist := s.authz.GetWhitelistForConnection(roles, conn.Config.Name)
+
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect", conn.Config.Name, map[string]interface{}{
-		"connection_id": connectionID,
-		"method":        r.Method,
+		"connection_id":   connectionID,
+		"method":          r.Method,
+		"roles":           roles,
+		"whitelist_rules": len(whitelist),
 	})
 
 	// Hijack HTTP connection to get raw TCP socket
@@ -66,13 +72,14 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 	// Set deadline based on connection expiry
 	clientConn.SetDeadline(conn.ExpiresAt)
 
-	// Create Postgres proxy with credential substitution
+	// Create Postgres proxy with credential substitution and whitelist
 	pgProxy := proxy.NewPostgresAuthProxy(
 		conn.Config,
 		s.config.Logging.AuditLogPath,
 		username,
 		connectionID,
 		s.config,
+		whitelist,
 	)
 
 	// Handle the Postgres protocol connection

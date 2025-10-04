@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/davidcohan/port-authorizing/internal/authorization"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/davidcohan/port-authorizing/internal/proxy"
 	"github.com/gorilla/mux"
@@ -18,15 +19,22 @@ type Server struct {
 	httpServer *http.Server
 	connMgr    *proxy.ConnectionManager
 	authSvc    *AuthService
+	authz      *authorization.Authorizer
 }
 
 // NewServer creates a new API server instance
 func NewServer(cfg *config.Config) (*Server, error) {
+	authSvc, err := NewAuthService(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auth service: %w", err)
+	}
+
 	s := &Server{
 		config:  cfg,
 		router:  mux.NewRouter(),
 		connMgr: proxy.NewConnectionManager(cfg.Server.MaxConnectionDuration),
-		authSvc: NewAuthService(cfg),
+		authSvc: authSvc,
+		authz:   authorization.NewAuthorizer(cfg),
 	}
 
 	s.setupRoutes()

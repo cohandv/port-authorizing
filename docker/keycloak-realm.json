@@ -1,0 +1,134 @@
+{
+  "realm": "portauth",
+  "enabled": true,
+  "displayName": "Port Authorizing",
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@portauth.local",
+      "firstName": "Alice",
+      "lastName": "Developer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["developer", "user"],
+      "attributes": {
+        "department": ["engineering"],
+        "team": ["backend"]
+      }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@portauth.local",
+      "firstName": "Bob",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "user"],
+      "attributes": {
+        "department": ["operations"],
+        "team": ["platform"]
+      }
+    },
+    {
+      "username": "charlie",
+      "enabled": true,
+      "email": "charlie@portauth.local",
+      "firstName": "Charlie",
+      "lastName": "QA",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["qa", "user"],
+      "attributes": {
+        "department": ["quality"],
+        "team": ["testing"]
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrator role with full access"
+      },
+      {
+        "name": "developer",
+        "description": "Developer role with dev/staging access"
+      },
+      {
+        "name": "qa",
+        "description": "QA role with test environment access"
+      },
+      {
+        "name": "user",
+        "description": "Base user role"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "port-authorizing",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "your-client-secret-change-in-production",
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://localhost:8080/auth/callback/oidc"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directGrantsOnly": false,
+      "protocolMappers": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "roles",
+      "description": "Roles scope",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    }
+  ]
+}
+

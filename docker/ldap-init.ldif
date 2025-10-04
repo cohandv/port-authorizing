@@ -1,0 +1,82 @@
+# Organizational Units
+dn: ou=users,dc=portauth,dc=local
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=portauth,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+# Users
+dn: uid=alice,ou=users,dc=portauth,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: alice
+cn: Alice Developer
+sn: Developer
+givenName: Alice
+mail: alice@portauth.local
+uidNumber: 10001
+gidNumber: 10001
+homeDirectory: /home/alice
+loginShell: /bin/bash
+userPassword: {SSHA}password123
+
+dn: uid=bob,ou=users,dc=portauth,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: bob
+cn: Bob Admin
+sn: Admin
+givenName: Bob
+mail: bob@portauth.local
+uidNumber: 10002
+gidNumber: 10002
+homeDirectory: /home/bob
+loginShell: /bin/bash
+userPassword: {SSHA}password123
+
+dn: uid=charlie,ou=users,dc=portauth,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: charlie
+cn: Charlie QA
+sn: QA
+givenName: Charlie
+mail: charlie@portauth.local
+uidNumber: 10003
+gidNumber: 10003
+homeDirectory: /home/charlie
+loginShell: /bin/bash
+userPassword: {SSHA}password123
+
+# Groups (Roles)
+dn: cn=admin,ou=groups,dc=portauth,dc=local
+objectClass: groupOfNames
+cn: admin
+description: Administrator group
+member: uid=bob,ou=users,dc=portauth,dc=local
+
+dn: cn=developer,ou=groups,dc=portauth,dc=local
+objectClass: groupOfNames
+cn: developer
+description: Developer group
+member: uid=alice,ou=users,dc=portauth,dc=local
+
+dn: cn=qa,ou=groups,dc=portauth,dc=local
+objectClass: groupOfNames
+cn: qa
+description: QA group
+member: uid=charlie,ou=users,dc=portauth,dc=local
+
+dn: cn=user,ou=groups,dc=portauth,dc=local
+objectClass: groupOfNames
+cn: user
+description: Base user group
+member: uid=alice,ou=users,dc=portauth,dc=local
+member: uid=bob,ou=users,dc=portauth,dc=local
+member: uid=charlie,ou=users,dc=portauth,dc=local
+

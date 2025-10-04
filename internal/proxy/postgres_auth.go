@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 	"sync"
 	"time"
 
@@ -24,16 +25,18 @@ type PostgresAuthProxy struct {
 	username     string
 	connectionID string
 	apiConfig    *config.Config
+	whitelist    []string
 }
 
 // NewPostgresAuthProxy creates a postgres proxy with auth handling
-func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, connectionID string, apiConfig *config.Config) *PostgresAuthProxy {
+func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, connectionID string, apiConfig *config.Config, whitelist []string) *PostgresAuthProxy {
 	return &PostgresAuthProxy{
 		config:       cfg,
 		auditLogPath: auditLogPath,
 		username:     username,
 		connectionID: connectionID,
 		apiConfig:    apiConfig,
+		whitelist:    whitelist,
 	}
 }
 
@@ -77,12 +80,25 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		return err
 	}
 
+	// SECURITY: Enforce that psql username matches authenticated API username
+	if clientUser != p.username {
+		p.sendAuthError(clientConn, "Username mismatch: you must connect as your authenticated user")
+		audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
+			"connection_id": p.connectionID,
+			"client_user":   clientUser,
+			"expected_user": p.username,
+			"reason":        "username_mismatch",
+		})
+		return fmt.Errorf("username mismatch: client=%s, authenticated=%s", clientUser, p.username)
+	}
+
 	// Validate API credentials
 	if !p.validateAPICredentials(clientUser, clientPassword) {
 		p.sendAuthError(clientConn, "Invalid API credentials")
 		audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
 			"connection_id": p.connectionID,
 			"client_user":   clientUser,
+			"reason":        "invalid_credentials",
 		})
 		return fmt.Errorf("invalid API credentials: %s", clientUser)
 	}
@@ -582,7 +598,7 @@ func (p *PostgresAuthProxy) validateAPICredentials(username, password string) bo
 	return false
 }
 
-// forwardWithLogging forwards data and logs queries
+// forwardWithLogging forwards data and logs/validates queries
 func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries bool) {
 	buf := make([]byte, 32*1024)
 
@@ -592,7 +608,12 @@ func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries boo
 			data := buf[:n]
 
 			if logQueries {
-				p.tryLogQuery(data)
+				// Validate queries against whitelist before forwarding
+				if blocked, query := p.validateAndLogQuery(data); blocked {
+					// Send error to client and don't forward to backend
+					p.sendQueryBlockedError(src, query)
+					continue
+				}
 			}
 
 			if _, err := dst.Write(data); err != nil {
@@ -606,8 +627,9 @@ func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries boo
 	}
 }
 
-// tryLogQuery extracts and logs SQL queries
-func (p *PostgresAuthProxy) tryLogQuery(data []byte) {
+// validateAndLogQuery extracts queries, validates against whitelist, and logs
+// Returns (blocked, query) where blocked=true if query should be blocked
+func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 	for i := 0; i < len(data); i++ {
 		if data[i] == 'Q' && i+5 < len(data) {
 			length := int(binary.BigEndian.Uint32(data[i+1 : i+5]))
@@ -617,15 +639,103 @@ func (p *PostgresAuthProxy) tryLogQuery(data []byte) {
 				query := string(bytes.TrimRight(queryBytes, "\x00"))
 
 				if query != "" {
+					// Check whitelist
+					allowed := p.isQueryAllowed(query)
+
+					// Log the query with whitelist result
 					audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
 						"connection_id": p.connectionID,
 						"query":         query,
 						"database":      p.config.BackendDatabase,
+						"allowed":       allowed,
+						"whitelist":     len(p.whitelist) > 0,
 					})
+
+					if !allowed {
+						// Log blocked query
+						audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
+							"connection_id": p.connectionID,
+							"query":         query,
+							"reason":        "whitelist_violation",
+						})
+						return true, query
+					}
 				}
 
 				i += length
 			}
 		}
 	}
+	return false, ""
+}
+
+// isQueryAllowed checks if a query matches the whitelist patterns (case-insensitive)
+func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
+	// If no whitelist, allow everything (backward compatibility)
+	if len(p.whitelist) == 0 {
+		return true
+	}
+
+	// Check each whitelist pattern (case-insensitive)
+	for _, pattern := range p.whitelist {
+		// Compile with case-insensitive flag
+		re, err := regexp.Compile("(?i)" + pattern)
+		if err != nil {
+			// Log bad pattern but don't block
+			audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
+				"connection_id": p.connectionID,
+				"pattern":       pattern,
+				"error":         err.Error(),
+			})
+			continue
+		}
+		if re.MatchString(query) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sendQueryBlockedError sends a proper PostgreSQL error response to the client for blocked queries
+func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
+	// Truncate query if too long
+	displayQuery := query
+	if len(displayQuery) > 100 {
+		displayQuery = displayQuery[:100] + "..."
+	}
+
+	// Build PostgreSQL ErrorResponse message
+	var buf bytes.Buffer
+
+	// Message type 'E' for ErrorResponse
+	buf.WriteByte('E')
+
+	// Build error fields according to PostgreSQL protocol
+	// S = Severity, C = SQLSTATE code, M = Message
+	var fields bytes.Buffer
+	fields.WriteString("SERROR\x00") // Severity: ERROR
+	fields.WriteString("C42501\x00") // SQLSTATE: insufficient_privilege
+	fields.WriteString(fmt.Sprintf("MQuery blocked by whitelist policy: %s\x00", displayQuery))
+	fields.WriteString("HCheck your role's whitelist patterns in the configuration.\x00") // Hint
+	fields.WriteByte(0)                                                                   // Null terminator for fields
+
+	// Write message length (includes the length field itself)
+	msgLength := uint32(4 + fields.Len())
+	binary.Write(&buf, binary.BigEndian, msgLength)
+
+	// Write fields
+	buf.Write(fields.Bytes())
+
+	// Send complete error message to client
+	conn.Write(buf.Bytes())
+
+	// Now send ReadyForQuery to indicate we're ready for next command
+	// This prevents client from hanging
+	var readyBuf bytes.Buffer
+	readyBuf.WriteByte('Z')                             // ReadyForQuery message type
+	binary.Write(&readyBuf, binary.BigEndian, int32(5)) // Length
+	readyBuf.WriteByte('I')                             // Transaction status: Idle
+
+	conn.Write(readyBuf.Bytes())
 }

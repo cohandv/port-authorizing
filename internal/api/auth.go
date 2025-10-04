@@ -8,23 +8,35 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davidcohan/port-authorizing/internal/auth"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 // AuthService handles authentication operations
 type AuthService struct {
-	config *config.Config
+	config      *config.Config
+	authManager *auth.Manager
 }
 
 // NewAuthService creates a new authentication service
-func NewAuthService(cfg *config.Config) *AuthService {
-	return &AuthService{config: cfg}
+func NewAuthService(cfg *config.Config) (*AuthService, error) {
+	authMgr, err := auth.NewManager(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize auth manager: %w", err)
+	}
+
+	return &AuthService{
+		config:      cfg,
+		authManager: authMgr,
+	}, nil
 }
 
 // Claims represents JWT token claims
 type Claims struct {
-	Username string `json:"username"`
+	Username string   `json:"username"`
+	Roles    []string `json:"roles"`
+	Email    string   `json:"email,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -38,6 +50,14 @@ type LoginRequest struct {
 type LoginResponse struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
+	User      UserInfo  `json:"user"`
+}
+
+// UserInfo in response
+type UserInfo struct {
+	Username string   `json:"username"`
+	Email    string   `json:"email,omitempty"`
+	Roles    []string `json:"roles"`
 }
 
 // handleLogin handles user login
@@ -48,14 +68,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authenticate user
-	if !s.authSvc.authenticate(req.Username, req.Password) {
+	// Authenticate user via auth manager
+	credentials := map[string]string{
+		"username": req.Username,
+		"password": req.Password,
+	}
+
+	userInfo, err := s.authSvc.authManager.Authenticate(credentials)
+	if err != nil {
 		respondError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
 
 	// Generate JWT token
-	token, expiresAt, err := s.authSvc.generateToken(req.Username)
+	token, expiresAt, err := s.authSvc.generateToken(userInfo)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to generate token")
 		return
@@ -64,24 +90,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, LoginResponse{
 		Token:     token,
 		ExpiresAt: expiresAt,
+		User: UserInfo{
+			Username: userInfo.Username,
+			Email:    userInfo.Email,
+			Roles:    userInfo.Roles,
+		},
 	})
 }
 
-// authenticate validates user credentials
-func (a *AuthService) authenticate(username, password string) bool {
-	for _, user := range a.config.Auth.Users {
-		if user.Username == username && user.Password == password {
-			return true
-		}
-	}
-	return false
-}
-
 // generateToken creates a new JWT token
-func (a *AuthService) generateToken(username string) (string, time.Time, error) {
+func (a *AuthService) generateToken(userInfo *auth.UserInfo) (string, time.Time, error) {
 	expiresAt := time.Now().Add(a.config.Auth.TokenExpiry)
 	claims := &Claims{
-		Username: username,
+		Username: userInfo.Username,
+		Roles:    userInfo.Roles,
+		Email:    userInfo.Email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -139,8 +162,9 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Add username to context
+		// Add username and roles to context
 		ctx := context.WithValue(r.Context(), "username", claims.Username)
+		ctx = context.WithValue(ctx, "roles", claims.Roles)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -35,6 +35,65 @@ services:
       timeout: 5s
       retries: 5
 
+  # Keycloak for OIDC and SAML2 authentication testing
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: port-auth-keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8180
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+    ports:
+      - "8180:8180"
+    command: start-dev --http-port=8180
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./docker/keycloak-realm.json:/opt/keycloak/data/import/realm.json:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8180/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # OpenLDAP for LDAP authentication testing
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: port-auth-ldap
+    environment:
+      LDAP_ORGANISATION: "Port Authorizing"
+      LDAP_DOMAIN: "portauth.local"
+      LDAP_ADMIN_PASSWORD: "adminpass"
+      LDAP_CONFIG_PASSWORD: "configpass"
+      LDAP_RFC2307BIS_SCHEMA: "true"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "true"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+    ports:
+      - "389:389"
+      - "636:636"
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+      - ./docker/ldap-init.ldif:/container/service/slapd/assets/config/bootstrap/ldif/50-init.ldif:ro
+    command: --copy-service
+
+  # LDAP Admin UI (phpLDAPadmin) for easy LDAP management
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: port-auth-ldapadmin
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: openldap
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8181:80"
+    depends_on:
+      - openldap
+
 volumes:
   postgres_data:
+  keycloak_data:
+  ldap_data:
+  ldap_config:
 

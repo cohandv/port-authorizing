@@ -5,6 +5,52 @@ server:
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
   token_expiry: 24h
+
+  # Authentication providers (supports multiple)
+  providers:
+    # Local authentication (simple username/password)
+    - name: local
+      type: local
+      enabled: true
+      config: {}
+
+    # OpenID Connect (via Keycloak or other OIDC provider)
+    - name: keycloak
+      type: oidc
+      enabled: false
+      config:
+        issuer: "http://localhost:8180/realms/portauth"
+        client_id: "port-authorizing"
+        client_secret: "your-client-secret-change-in-production"
+        redirect_url: "http://localhost:8080/auth/callback/oidc"
+        roles_claim: "roles"
+        username_claim: "preferred_username"
+
+    # LDAP authentication
+    - name: corporate-ldap
+      type: ldap
+      enabled: false
+      config:
+        url: "localhost:389"
+        bind_dn: "cn=admin,dc=portauth,dc=local"
+        bind_password: "adminpass"
+        user_base_dn: "ou=users,dc=portauth,dc=local"
+        user_filter: "(uid=%s)"
+        group_base_dn: "ou=groups,dc=portauth,dc=local"
+        group_filter: "(member=%s)"
+        use_tls: "false"
+        skip_tls_verify: "true"
+
+    # SAML2 authentication
+    - name: corporate-saml
+      type: saml2
+      enabled: false
+      config:
+        idp_metadata_url: "https://idp.example.com/metadata"
+        sp_entity_id: "port-authorizing"
+        sp_acs_url: "http://localhost:8080/auth/callback/saml2"
+
+  # Legacy local users (backward compatible)
   users:
     - username: admin
       password: admin123  # Use hashed passwords in production
@@ -14,6 +60,10 @@ auth:
       password: dev123
       roles:
         - developer
+    - username: qa-user
+      password: qa123
+      roles:
+        - qa
 
 connections:
   # PostgreSQL test database (Docker)
@@ -21,63 +71,204 @@ connections:
     type: postgres
     host: localhost
     port: 5432
-    duration: 30m  # Auto-disconnect after 30 minutes
-    # Backend credentials (used by proxy to connect to real database)
-    # Users connect with their API credentials, not these
+    duration: 3m
+    tags:
+      - env:test
+      - type:database
+      - team:backend
     backend_username: "testuser"
     backend_password: "testpass"
     backend_database: "testdb"
-    whitelist:
-      - "^SELECT.*"
-      - "^INSERT INTO logs.*"
-      - "^UPDATE users.*"
     metadata:
       description: "Test PostgreSQL database (Docker)"
-      environment: "test"
-      # These are just for display/documentation
       database: "testdb"
-      username: "testuser"
 
-  # Nginx web server (Docker)
-  - name: nginx-server
-    type: http
-    host: localhost
-    port: 8888
-    scheme: http
-    duration: 1h  # Auto-disconnect after 1 hour
+  # PostgreSQL staging database
+  - name: postgres-staging
+    type: postgres
+    host: staging-db.example.com
+    port: 5432
+    duration: 15m
+    tags:
+      - env:staging
+      - type:database
+      - team:backend
+    backend_username: "staginguser"
+    backend_password: "stagingpass"
+    backend_database: "app"
     metadata:
-      description: "Test Nginx web server (Docker)"
-      environment: "test"
+      description: "Staging PostgreSQL database"
+      environment: "staging"
 
-  # Production examples (disabled by default)
+  # PostgreSQL production database
   - name: postgres-prod
     type: postgres
     host: prod-db.example.com
     port: 5432
-    duration: 15m  # Short timeout for production
-    whitelist:
-      - "^SELECT.*"
-      - "^INSERT INTO logs.*"
+    duration: 10m
+    tags:
+      - env:production
+      - type:database
+      - team:backend
+      - critical:true
+    backend_username: "produser"
+    backend_password: "prodpass"
+    backend_database: "app"
     metadata:
       description: "Production PostgreSQL database"
       environment: "production"
 
-  - name: internal-api
+  # Nginx test server (Docker)
+  - name: nginx-test
+    type: http
+    host: localhost
+    port: 8888
+    scheme: http
+    duration: 1h
+    tags:
+      - env:test
+      - type:web
+    metadata:
+      description: "Test Nginx web server (Docker)"
+
+  # Internal API staging
+  - name: api-staging
+    type: http
+    host: api-staging.internal.example.com
+    port: 443
+    scheme: https
+    duration: 2h
+    tags:
+      - env:staging
+      - type:api
+      - team:backend
+    metadata:
+      description: "Internal REST API (Staging)"
+
+  # Internal API production
+  - name: api-prod
     type: http
     host: api.internal.example.com
     port: 443
     scheme: https
-    duration: 2h  # Longer for API access
+    duration: 1h
+    tags:
+      - env:production
+      - type:api
+      - team:backend
+      - critical:true
     metadata:
-      description: "Internal REST API"
+      description: "Internal REST API (Production)"
 
+  # Redis cache
   - name: redis-cache
     type: tcp
     host: redis.example.com
     port: 6379
-    duration: 5m  # Very short for cache operations
+    duration: 5m
+    tags:
+      - env:production
+      - type:cache
+      - team:platform
     metadata:
       description: "Redis cache server"
+
+# Role-based access policies
+# Policies define which roles can access which connections (via tags) and what they can do (whitelist)
+policies:
+  # Admin policy - full access to everything
+  - name: admin-full-access
+    roles:
+      - admin
+    tags:
+      - env:test
+      - env:staging
+      - env:production
+    tag_match: any  # Match if connection has ANY of these tags
+    whitelist:
+      - ".*"  # Allow all queries/requests
+    metadata:
+      description: "Admins have full access to all environments"
+
+  # Developer policy - full access to test and staging
+  - name: developer-test-staging
+    roles:
+      - developer
+    tags:
+      - env:test
+    tag_match: any
+    whitelist:
+      - ".*"  # Allow all in test
+    metadata:
+      description: "Developers have full access to test environment"
+
+  - name: developer-staging
+    roles:
+      - developer
+    tags:
+      - env:staging
+    tag_match: any
+    whitelist:
+      - "^SELECT.*"
+      - "^INSERT INTO logs.*"
+      - "^INSERT INTO events.*"
+      - "^UPDATE.*WHERE id.*"
+      - "^GET .*"
+      - "^POST /api/.*"
+    metadata:
+      description: "Developers have limited access to staging"
+
+  # Developer policy - read-only access to production
+  - name: developer-prod-readonly
+    roles:
+      - developer
+    tags:
+      - env:production
+    tag_match: any
+    whitelist:
+      - "^SELECT.*"
+      - "^EXPLAIN.*"
+      - "^GET .*"
+    metadata:
+      description: "Developers have read-only access to production"
+
+  # QA policy - full access to test, read-only to staging
+  - name: qa-test-full
+    roles:
+      - qa
+    tags:
+      - env:test
+    tag_match: any
+    whitelist:
+      - ".*"
+    metadata:
+      description: "QA has full access to test environment"
+
+  - name: qa-staging-readonly
+    roles:
+      - qa
+    tags:
+      - env:staging
+    tag_match: any
+    whitelist:
+      - "^SELECT.*"
+      - "^GET .*"
+    metadata:
+      description: "QA has read-only access to staging"
+
+  # Example: team-specific access
+  - name: backend-team-databases
+    roles:
+      - developer
+      - admin
+    tags:
+      - team:backend
+      - type:database
+    tag_match: all  # Must have ALL these tags
+    whitelist:
+      - ".*"
+    metadata:
+      description: "Backend team can access backend databases"
 
 security:
   enable_llm_analysis: false
@@ -87,4 +278,3 @@ security:
 logging:
   audit_log_path: "audit.log"
   log_level: "info"
-

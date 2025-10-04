@@ -94,8 +94,8 @@ func runConnect(cmd *cobra.Command, args []string) error {
 		// Extract username from token for display
 		username, _ := getUsernameFromToken(token)
 		fmt.Printf("\n📝 PostgreSQL Connection Info:\n")
-		fmt.Printf("  Use your API credentials to connect:\n")
-		fmt.Printf("  • Username: %s\n", username)
+		fmt.Printf("  ⚠️  IMPORTANT: You MUST connect with your authenticated username\n")
+		fmt.Printf("  • Username: %s (required - no other username will work)\n", username)
 		fmt.Printf("  • Password: <your API password>\n")
 		fmt.Printf("  • Database: %s\n", connResp.Database)
 		fmt.Printf("\n  Connection string:\n")

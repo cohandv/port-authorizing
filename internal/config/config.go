@@ -13,6 +13,7 @@ type Config struct {
 	Server      ServerConfig       `yaml:"server"`
 	Auth        AuthConfig         `yaml:"auth"`
 	Connections []ConnectionConfig `yaml:"connections"`
+	Policies    []RolePolicy       `yaml:"policies"`
 	Security    SecurityConfig     `yaml:"security"`
 	Logging     LoggingConfig      `yaml:"logging"`
 }
@@ -25,10 +26,24 @@ type ServerConfig struct {
 
 // AuthConfig contains authentication settings
 type AuthConfig struct {
-	JWTSecret   string        `yaml:"jwt_secret"`
-	TokenExpiry time.Duration `yaml:"token_expiry"`
-	Users       []User        `yaml:"users"`
+	JWTSecret   string               `yaml:"jwt_secret"`
+	TokenExpiry time.Duration        `yaml:"token_expiry"`
+	Providers   []AuthProviderConfig `yaml:"providers"`
+	// Legacy: local users (kept for backward compatibility)
+	Users []User `yaml:"users,omitempty"`
 }
+
+// AuthProviderConfig defines an authentication provider
+type AuthProviderConfig struct {
+	Name    string            `yaml:"name"`    // Unique identifier
+	Type    string            `yaml:"type"`    // local, oidc, saml2, ldap
+	Enabled bool              `yaml:"enabled"` // Whether this provider is active
+	Config  map[string]string `yaml:"config"`  // Provider-specific configuration
+}
+
+// OIDC Config keys: issuer, client_id, client_secret, redirect_url
+// SAML2 Config keys: idp_metadata_url, sp_entity_id, sp_acs_url, sp_cert, sp_key
+// LDAP Config keys: url, bind_dn, bind_password, user_base_dn, user_filter, group_base_dn
 
 // User represents a user account
 type User struct {
@@ -39,18 +54,30 @@ type User struct {
 
 // ConnectionConfig defines an available connection endpoint
 type ConnectionConfig struct {
-	Name      string            `yaml:"name"`
-	Type      string            `yaml:"type"` // postgres, http, tcp
-	Host      string            `yaml:"host"`
-	Port      int               `yaml:"port"`
-	Scheme    string            `yaml:"scheme,omitempty"`    // for HTTP: http/https
-	Duration  time.Duration     `yaml:"duration,omitempty"`  // connection timeout duration
-	Whitelist []string          `yaml:"whitelist,omitempty"` // regex patterns
-	Metadata  map[string]string `yaml:"metadata,omitempty"`
+	Name     string            `yaml:"name"`
+	Type     string            `yaml:"type"` // postgres, http, tcp
+	Host     string            `yaml:"host"`
+	Port     int               `yaml:"port"`
+	Scheme   string            `yaml:"scheme,omitempty"`   // for HTTP: http/https
+	Duration time.Duration     `yaml:"duration,omitempty"` // connection timeout duration
+	Tags     []string          `yaml:"tags,omitempty"`     // Tags for policy matching (env:prod, team:backend, etc.)
+	Metadata map[string]string `yaml:"metadata,omitempty"`
 	// Backend credentials (for protocols like Postgres where proxy re-authenticates)
 	BackendUsername string `yaml:"backend_username,omitempty"`
 	BackendPassword string `yaml:"backend_password,omitempty"`
 	BackendDatabase string `yaml:"backend_database,omitempty"`
+	// Deprecated: use policies instead
+	Whitelist []string `yaml:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
+}
+
+// RolePolicy defines access policies for roles
+type RolePolicy struct {
+	Name      string            `yaml:"name"`                // Policy name
+	Roles     []string          `yaml:"roles"`               // Which roles this policy applies to
+	Tags      []string          `yaml:"tags"`                // Connection tags this policy applies to (e.g., "env:dev", "team:backend")
+	TagMatch  string            `yaml:"tag_match,omitempty"` // "all" (default) or "any"
+	Whitelist []string          `yaml:"whitelist,omitempty"` // Allowed patterns for matched connections
+	Metadata  map[string]string `yaml:"metadata,omitempty"`  // Additional metadata
 }
 
 // SecurityConfig contains security settings

@@ -585,59 +585,22 @@ func (p *PostgresAuthProxy) validateAPICredentials(username, password string) bo
 // forwardWithLogging forwards data and logs queries
 func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries bool) {
 	buf := make([]byte, 32*1024)
-	direction := "backend->client"
-	if logQueries {
-		direction = "client->backend"
-	}
 
 	for {
 		n, err := src.Read(buf)
 		if n > 0 {
 			data := buf[:n]
 
-			// Log data received
-			audit.Log(p.auditLogPath, p.username, "postgres_data_received", p.config.Name, map[string]interface{}{
-				"connection_id": p.connectionID,
-				"direction":     direction,
-				"bytes":         n,
-			})
-
 			if logQueries {
 				p.tryLogQuery(data)
 			}
 
-			// Log before sending
-			audit.Log(p.auditLogPath, p.username, "postgres_data_sending", p.config.Name, map[string]interface{}{
-				"connection_id": p.connectionID,
-				"direction":     direction,
-				"bytes":         n,
-			})
-
 			if _, err := dst.Write(data); err != nil {
-				audit.Log(p.auditLogPath, p.username, "postgres_forward_error", p.config.Name, map[string]interface{}{
-					"connection_id": p.connectionID,
-					"direction":     direction,
-					"error":         err.Error(),
-				})
 				return
 			}
-
-			// Log after successful send
-			audit.Log(p.auditLogPath, p.username, "postgres_data_sent", p.config.Name, map[string]interface{}{
-				"connection_id": p.connectionID,
-				"direction":     direction,
-				"bytes":         n,
-			})
 		}
 
 		if err != nil {
-			if err != io.EOF {
-				audit.Log(p.auditLogPath, p.username, "postgres_read_error", p.config.Name, map[string]interface{}{
-					"connection_id": p.connectionID,
-					"direction":     direction,
-					"error":         err.Error(),
-				})
-			}
 			return
 		}
 	}

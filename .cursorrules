@@ -1,0 +1,235 @@
+# Cursor AI Rules for Port Authorizing
+
+## Testing Requirements
+
+### 1. Always Write Unit Tests for Code Changes
+
+When making ANY code changes (new features, bug fixes, refactors):
+
+1. **Create or update corresponding test files** following the pattern `<package>_test.go`
+2. **Test coverage requirements:**
+   - New functions: 100% coverage
+   - Modified functions: Update existing tests + add new test cases
+   - Bug fixes: Add test case that reproduces the bug + verifies the fix
+3. **Test structure:**
+   - Use table-driven tests for multiple scenarios
+   - Include both success and error cases
+   - Test edge cases and boundary conditions
+   - Add benchmark tests for performance-critical code
+4. **Test locations:**
+   - `internal/auth/*` → `internal/auth/*_test.go`
+   - `internal/authorization/*` → `internal/authorization/*_test.go`
+   - `internal/security/*` → `internal/security/*_test.go`
+   - `internal/config/*` → `internal/config/*_test.go`
+   - `internal/audit/*` → `internal/audit/*_test.go`
+   - `internal/api/*` → `internal/api/*_test.go`
+   - `internal/proxy/*` → `internal/proxy/*_test.go`
+
+### 2. Always Run Tests Before Committing
+
+Before ANY git commit:
+
+1. **Run unit tests:** `make test-unit` or `go test ./internal/... -cover`
+2. **Verify all tests pass** (exit code 0)
+3. **Check coverage** hasn't decreased for modified packages
+4. **If tests fail:**
+   - Fix the failing tests
+   - DO NOT commit until all tests pass
+   - DO NOT skip or comment out failing tests
+
+### 3. Test Writing Guidelines
+
+```go
+// ✅ GOOD: Table-driven test with multiple cases
+func TestFunctionName(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   InputType
+        want    OutputType
+        wantErr bool
+    }{
+        {
+            name:    "valid input returns expected output",
+            input:   validInput,
+            want:    expectedOutput,
+            wantErr: false,
+        },
+        {
+            name:    "invalid input returns error",
+            input:   invalidInput,
+            want:    nil,
+            wantErr: true,
+        },
+        {
+            name:    "edge case: empty input",
+            input:   emptyInput,
+            want:    defaultOutput,
+            wantErr: false,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := FunctionUnderTest(tt.input)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if !reflect.DeepEqual(got, tt.want) {
+                t.Errorf("got %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+
+// ✅ GOOD: Benchmark for performance-critical code
+func BenchmarkFunctionName(b *testing.B) {
+    input := setupInput()
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        FunctionUnderTest(input)
+    }
+}
+```
+
+### 4. Coverage Targets
+
+Maintain or improve coverage for each package:
+
+- **Critical packages** (auth, authorization, security): ≥ 80%
+- **Configuration and utilities**: ≥ 70%
+- **API/handlers**: ≥ 50%
+- **Overall project**: ≥ 50%
+
+Current baseline coverage:
+- `internal/authorization`: 90.3%
+- `internal/config`: 76.5%
+- `internal/audit`: 66.7%
+- `internal/security`: 15.0%
+- `internal/auth`: 7.4%
+
+### 5. Pre-Commit Workflow
+
+```bash
+# 1. Make code changes
+# 2. Write/update tests
+# 3. Run tests
+make test-unit
+
+# 4. Check coverage (optional but recommended)
+make test-coverage
+
+# 5. Verify all tests pass
+# 6. Stage changes
+git add <files>
+
+# 7. Run tests one more time before commit
+make test-unit && git commit -m "..."
+
+# 8. If tests fail, DO NOT commit
+```
+
+### 6. When Modifying Existing Code
+
+1. **Read existing tests first** to understand current behavior
+2. **Update tests** to reflect new behavior
+3. **Add new test cases** for new functionality
+4. **Ensure backward compatibility** tests still pass
+5. **Run full test suite:** `go test ./...`
+
+### 7. Test File Template
+
+Use this template when creating new test files:
+
+```go
+package packagename
+
+import (
+    "testing"
+)
+
+func TestNewFunction(t *testing.T) {
+    tests := []struct {
+        name    string
+        // Add test fields
+        wantErr bool
+    }{
+        {
+            name: "descriptive test case name",
+            // Add test data
+            wantErr: false,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // Test implementation
+        })
+    }
+}
+```
+
+## Enforcement Rules
+
+### ⛔ BLOCKED Actions
+
+- ❌ Committing without running tests
+- ❌ Committing with failing tests
+- ❌ Commenting out failing tests to make them pass
+- ❌ Skipping test updates when modifying functions
+- ❌ Decreasing test coverage without justification
+
+### ✅ REQUIRED Actions
+
+- ✅ Run `make test-unit` before EVERY commit
+- ✅ Write tests for ALL new functions
+- ✅ Update tests for ALL modified functions
+- ✅ Add tests for ALL bug fixes
+- ✅ Verify coverage hasn't decreased
+
+## Quick Reference
+
+```bash
+# Run all unit tests
+make test-unit
+
+# Run tests with verbose output
+make test-verbose
+
+# Generate coverage report
+make test-coverage
+
+# Run specific package tests
+go test ./internal/auth -v
+go test ./internal/authorization -v
+
+# Run specific test
+go test -run TestFunctionName ./internal/package -v
+
+# Run tests with race detection
+go test ./... -race
+
+# Clean test cache
+go clean -testcache
+```
+
+## Exception Cases
+
+The only acceptable reasons to skip writing tests:
+
+1. **Temporary debugging code** that will be removed before commit
+2. **Generated code** (proto files, mocks, etc.)
+3. **Documentation-only changes** (README, comments, etc.)
+4. **Configuration files** (YAML, JSON, etc.)
+
+For everything else: **TESTS ARE MANDATORY**
+
+## Summary
+
+**Golden Rule:** No code changes without tests. No commits without running tests.
+
+If you forget these rules, the AI should:
+1. Remind you to write tests
+2. Prompt you to run tests before committing
+3. Refuse to help commit code without passing tests
+

@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/cohandv/port-authorizing/compare/v1.0.0...v1.0.1) (2025-10-05)
+
+
+### Bug Fixes
+
+* capture semantic-release outputs for dependent jobs ([2aefa7d](https://github.com/cohandv/port-authorizing/commit/2aefa7d8a062aaf8398c56c5e9778338a09a5f41))
+
 ## 1.0.0 (2025-10-05)
 
 

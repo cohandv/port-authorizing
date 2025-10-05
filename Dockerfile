@@ -1,10 +1,12 @@
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24-alpine3.21 AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git make
+# Install build dependencies and update all packages to latest versions
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache git make
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -25,10 +27,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     ./cmd/port-authorizing
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.21
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+# Update all packages and install runtime dependencies with latest security patches
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache ca-certificates tzdata curl && \
+    rm -rf /var/cache/apk/*
 
 # Create non-root user
 RUN addgroup -S portauth && adduser -S portauth -G portauth

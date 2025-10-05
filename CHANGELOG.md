@@ -1,3 +1,10 @@
+## [1.1.0](https://github.com/cohandv/port-authorizing/compare/v1.0.1...v1.1.0) (2025-10-05)
+
+
+### Features
+
+* adding a new change ([b018e6e](https://github.com/cohandv/port-authorizing/commit/b018e6e9356bde3ae17a62cbc346483e9a1fb7cb))
+
 ## [1.0.1](https://github.com/cohandv/port-authorizing/compare/v1.0.0...v1.0.1) (2025-10-05)
 
 

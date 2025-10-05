@@ -1,0 +1,131 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      
+      - name: Download dependencies
+        run: go mod download
+      
+      - name: Run unit tests
+        run: make test-unit
+      
+      - name: Run tests with race detector
+        run: go test -race -short ./internal/...
+      
+      - name: Generate coverage report
+        run: |
+          go test ./internal/... -coverprofile=coverage.out -covermode=atomic
+          go tool cover -func=coverage.out
+      
+      - name: Check test coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${COVERAGE}%"
+          
+          # Fail if coverage is below 5% (adjust as needed)
+          if (( $(echo "$COVERAGE < 5.0" | bc -l) )); then
+            echo "❌ Coverage is below 5%"
+            exit 1
+          else
+            echo "✅ Coverage check passed"
+          fi
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 30
+      
+      - name: Comment coverage on PR (if PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const coverage = fs.readFileSync('coverage.out', 'utf8');
+            const lines = coverage.split('\n').filter(line => line.includes('total:'));
+            const totalLine = lines[lines.length - 1] || 'No coverage data';
+            
+            const comment = `## 📊 Test Coverage Report\n\n\`\`\`\n${totalLine}\n\`\`\`\n\nFull coverage report available in workflow artifacts.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      
+      - name: Build binary
+        run: make build
+      
+      - name: Verify binary
+        run: |
+          ./bin/port-authorizing --version
+          echo "✅ Binary built successfully"
+

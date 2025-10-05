@@ -1,5 +1,7 @@
 # Port Authorizing
 
+> **📦 Docker Hub** | 🔗 **[GitHub Repository](https://github.com/cohandv/port-authorizing)** | 📖 **[Documentation](https://github.com/cohandv/port-authorizing/tree/main/docs)** | 🐛 **[Issues](https://github.com/cohandv/port-authorizing/issues)** | 🚀 **[Releases](https://github.com/cohandv/port-authorizing/releases)**
+
 **Secure proxy for any service with authentication, authorization, and audit logging.**
 
 Port Authorizing provides time-limited, audited access to any service (PostgreSQL, HTTP, TCP) with centralized authentication (OIDC/LDAP/SAML2), role-based access control, and protocol-specific filtering.

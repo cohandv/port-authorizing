@@ -85,6 +85,6 @@ jobs:
           username: ${{ env.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE_NAME }}
-          short-description: "Secure database access proxy with authentication and authorization"
+          short-description: "Secure proxy for any service with authentication, authorization, and audit logging"
           readme-filepath: ./DOCKER_HUB_README.md
 

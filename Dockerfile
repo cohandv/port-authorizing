@@ -52,16 +52,24 @@ USER portauth
 # Expose API port
 EXPOSE 8080
 
-# Default command (server mode)
+# Default command runs server, but can be overridden for client commands
+# Server mode (default):  docker run -v ./config.yaml:/app/config.yaml port-authorizing
+# Client mode examples:
+#   docker run port-authorizing login -u admin -p password
+#   docker run port-authorizing list
+#   docker run port-authorizing connect mydb -l 5432
 ENTRYPOINT ["port-authorizing"]
 CMD ["server", "--config", "/app/config.yaml"]
 
-# Health check
+# Health check (only relevant for server mode)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
 
 # Labels
 LABEL org.opencontainers.image.title="Port Authorizing"
-LABEL org.opencontainers.image.description="Secure database access proxy with authentication and authorization"
-LABEL org.opencontainers.image.source="https://github.com/yourusername/port-authorizing"
+LABEL org.opencontainers.image.description="Secure proxy for any service with authentication, authorization, and audit logging"
+LABEL org.opencontainers.image.url="https://github.com/davidcohan/port-authorizing"
+LABEL org.opencontainers.image.source="https://github.com/davidcohan/port-authorizing"
+LABEL org.opencontainers.image.vendor="David Cohan"
+LABEL org.opencontainers.image.licenses="MIT"
 

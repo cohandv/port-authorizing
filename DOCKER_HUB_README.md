@@ -1,8 +1,16 @@
 # Port Authorizing
 
-**Secure database access proxy with authentication, authorization, and query whitelisting.**
+**Secure proxy for any service with authentication, authorization, and audit logging.**
 
-Port Authorizing provides time-limited, audited access to databases and services with centralized authentication (OIDC/LDAP/SAML2) and role-based SQL query filtering.
+Port Authorizing provides time-limited, audited access to any service (PostgreSQL, HTTP, TCP) with centralized authentication (OIDC/LDAP/SAML2), role-based access control, and protocol-specific filtering.
+
+## 📊 Protocol Maturity
+
+| Protocol | Status | Features |
+|----------|--------|----------|
+| **PostgreSQL** | ✅ Mature | Full authentication, query whitelisting, username validation, audit logging |
+| **HTTP/HTTPS** | ✅ Mature | Transparent proxying, authentication, full request/response handling |
+| **TCP** | 🚧 Beta | Basic proxying with authentication, limited protocol awareness |
 
 ## 🚀 Quick Start
 
@@ -21,6 +29,27 @@ docker run -d \
 ```bash
 curl http://localhost:8080/api/health
 ```
+
+### Use as Client
+
+The Docker image can also be used as a CLI client:
+
+```bash
+# Login to server
+docker run --rm -v ~/.port-auth:/home/portauth/.port-auth \
+  cohandv/port-authorizing:latest \
+  login -u admin -p password --api-url http://your-server:8080
+
+# List available connections
+docker run --rm -v ~/.port-auth:/home/portauth/.port-auth \
+  cohandv/port-authorizing:latest \
+  list --api-url http://your-server:8080
+
+# Check version
+docker run --rm cohandv/port-authorizing:latest --version
+```
+
+**Note:** Client mode requires network access to your Port Authorizing server and volume mount for storing the auth token.
 
 ## 🐳 Docker Compose
 
@@ -193,7 +222,7 @@ docker run --rm -it \
   cohandv/port-authorizing:latest \
   list --api-url http://localhost:8080
 
-# Connect to database
+# Connect to service (PostgreSQL example)
 docker run --rm -it \
   --network host \
   -v ~/.port-auth:/root/.port-auth \

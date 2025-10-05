@@ -41,3 +41,5 @@ tmp/
 temp/
 
 
+coverage.html
+coverage.out

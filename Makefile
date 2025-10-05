@@ -1,5 +1,5 @@
 .PHONY: all build build-linux build-darwin build-windows build-all build-release \
-        build-docker clean test run-server install deps cross-compile help
+        build-docker clean test test-verbose test-coverage test-unit run-server install deps cross-compile help
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -108,10 +108,28 @@ clean:
 	@rm -f audit.log api.log
 	@echo "✓ Clean complete!"
 
-# Run Go tests
+# Run all tests (unit + integration)
 test:
-	@echo "Running Go tests..."
-	@go test -v ./...
+	@echo "Running all tests..."
+	@go test ./... -cover
+
+# Run unit tests only
+test-unit:
+	@echo "Running unit tests..."
+	@go test ./internal/... -cover
+
+# Run tests with verbose output
+test-verbose:
+	@echo "Running tests (verbose)..."
+	@go test -v ./internal/...
+
+# Run tests with coverage report
+test-coverage:
+	@echo "Running tests with coverage report..."
+	@go test ./internal/... -coverprofile=coverage.out
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "✓ Coverage report generated: coverage.html"
+	@go tool cover -func=coverage.out | tail -1
 
 # Run end-to-end tests with Docker
 test-e2e:

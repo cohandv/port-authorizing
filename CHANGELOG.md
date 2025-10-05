@@ -1,3 +1,10 @@
+## 1.0.0 (2025-10-05)
+
+
+### Features
+
+* trigger first automatic release ([6245179](https://github.com/cohandv/port-authorizing/commit/6245179ee50f1336ec7bbaaca7a2e3d001a3b7da))
+
 # Changelog
 
 All notable changes to Port Authorizing are **automatically documented** in this file.

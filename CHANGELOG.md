@@ -1,3 +1,11 @@
+## [1.2.0](https://github.com/cohandv/port-authorizing/compare/v1.1.0...v1.2.0) (2025-10-05)
+
+
+### Features
+
+* build and push Docker images in release workflow ([d378ccb](https://github.com/cohandv/port-authorizing/commit/d378ccb845788fe16b8db1e099048194eaae02be))
+* build and push Docker images in release workflow ([a25254b](https://github.com/cohandv/port-authorizing/commit/a25254b6cff2d88b4fe7d73037d951f1c032a9ee))
+
 ## [1.1.0](https://github.com/cohandv/port-authorizing/compare/v1.0.1...v1.1.0) (2025-10-05)
 
 

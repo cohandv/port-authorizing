@@ -125,7 +125,19 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
         run: |
-          npx semantic-release
+          npx semantic-release > /tmp/semantic-release.log 2>&1 || true
+          cat /tmp/semantic-release.log
+
+          # Extract version from semantic-release output
+          if grep -q "Published release" /tmp/semantic-release.log; then
+            VERSION=$(grep "Published release" /tmp/semantic-release.log | sed -E 's/.*Published release ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+            echo "new_release_published=true" >> $GITHUB_OUTPUT
+            echo "new_release_version=$VERSION" >> $GITHUB_OUTPUT
+            echo "✅ Release published: v$VERSION"
+          else
+            echo "new_release_published=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  No release published"
+          fi
 
       - name: Output release info
         run: |

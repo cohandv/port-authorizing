@@ -13,7 +13,7 @@ import (
 )
 
 // runOIDCLogin performs browser-based OIDC authentication
-func runOIDCLogin() error {
+func runOIDCLogin(apiURL string) error {
 	fmt.Println("🔐 Starting browser-based OIDC authentication...")
 	fmt.Println("")
 

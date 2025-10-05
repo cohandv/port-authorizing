@@ -23,6 +23,12 @@ type connectionInfo struct {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
+	// Get API URL from parent command flags
+	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
+	if apiURL == "" {
+		apiURL = "http://localhost:8080"
+	}
+
 	token, err := loadToken()
 	if err != nil {
 		return fmt.Errorf("not logged in. Please run 'login' first: %w", err)

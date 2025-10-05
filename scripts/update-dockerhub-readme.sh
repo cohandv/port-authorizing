@@ -36,15 +36,15 @@ echo ""
 # Method 1: Using Docker Hub API (requires token)
 if [ -n "$DOCKERHUB_TOKEN" ]; then
     echo "🔑 Using Docker Hub API with token..."
-    
+
     README_CONTENT=$(cat "$README_FILE" | jq -Rs .)
-    
+
     curl -X PATCH \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $DOCKERHUB_TOKEN" \
         -d "{\"full_description\": $README_CONTENT}" \
         "https://hub.docker.com/v2/repositories/${DOCKER_USERNAME}/${DOCKER_REPO}/"
-    
+
     echo ""
     echo "✅ README updated via API"
 else
@@ -60,7 +60,7 @@ else
     echo "2. Click 'Edit' in the Description section"
     echo "3. Copy content from: $README_FILE"
     echo ""
-    
+
     # Open browser to Docker Hub
     if command -v open &> /dev/null; then
         echo "🌐 Opening Docker Hub in browser..."

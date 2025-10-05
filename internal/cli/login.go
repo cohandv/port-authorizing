@@ -47,9 +47,15 @@ type loginResponse struct {
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
+	// Get API URL from parent command flags
+	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
+	if apiURL == "" {
+		apiURL = "http://localhost:8080"
+	}
+
 	// Determine authentication method
 	if loginProvider == "oidc" {
-		return runOIDCLogin()
+		return runOIDCLogin(apiURL)
 	}
 
 	// If no username/password provided, default to OIDC flow
@@ -57,7 +63,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		fmt.Println("No credentials provided. Using browser-based OIDC authentication.")
 		fmt.Println("(Use -u and -p flags for local username/password authentication)")
 		fmt.Println("")
-		return runOIDCLogin()
+		return runOIDCLogin(apiURL)
 	}
 
 	// Local username/password authentication
@@ -113,9 +119,16 @@ func runLogin(cmd *cobra.Command, args []string) error {
 }
 
 func saveToken(token string) error {
-	// Expand config path
-	configPath := os.ExpandEnv(configPath)
-	configDir := filepath.Dir(configPath)
+	// Get default config path
+	defaultPath := filepath.Join(os.Getenv("HOME"), ".port-auth", "config.json")
+
+	// Use configPath if set, otherwise use default
+	path := defaultPath
+	if configPath != "" && configPath != "$HOME/.port-auth/config.json" {
+		path = os.ExpandEnv(configPath)
+	}
+
+	configDir := filepath.Dir(path)
 
 	// Create config directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0700); err != nil {
@@ -133,7 +146,7 @@ func saveToken(token string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(configPath, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

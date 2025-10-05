@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +43,12 @@ type connectResponse struct {
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
+	// Get API URL from parent command flags
+	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
+	if apiURL == "" {
+		apiURL = "http://localhost:8080"
+	}
+
 	connectionName := args[0]
 
 	token, err := loadToken()
@@ -109,14 +116,14 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nStarting local proxy server...")
 
 	// Start local proxy server with expiry time
-	if err := startLocalProxy(localPort, connResp.ConnectionID, token, connResp.ExpiresAt); err != nil {
+	if err := startLocalProxy(localPort, connResp.ConnectionID, token, connResp.ExpiresAt, apiURL); err != nil {
 		return fmt.Errorf("failed to start local proxy: %w", err)
 	}
 
 	return nil
 }
 
-func startLocalProxy(port int, connectionID, token string, expiresAt string) error {
+func startLocalProxy(port int, connectionID, token string, expiresAt string, apiURL string) error {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
@@ -162,18 +169,23 @@ func startLocalProxy(port int, connectionID, token string, expiresAt string) err
 	}()
 
 	// Main loop
+	// Create closure to capture apiURL
+	handleConnection := func(conn net.Conn) {
+		handleLocalConnection(conn, connectionID, token, apiURL)
+	}
+
 	for {
 		select {
 		case <-sigChan:
 			fmt.Println("\nShutting down...")
 			return nil
 		case conn := <-connChan:
-			go handleLocalConnection(conn, connectionID, token)
+			go handleConnection(conn)
 		}
 	}
 }
 
-func handleLocalConnection(localConn net.Conn, connectionID, token string) {
+func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL string) {
 	defer localConn.Close()
 
 	// Parse API URL to get host and port
@@ -235,8 +247,16 @@ func handleLocalConnection(localConn net.Conn, connectionID, token string) {
 }
 
 func loadToken() (string, error) {
-	configPath := os.ExpandEnv(configPath)
-	data, err := os.ReadFile(configPath)
+	// Get default config path
+	defaultPath := filepath.Join(os.Getenv("HOME"), ".port-auth", "config.json")
+
+	// Use configPath if set, otherwise use default
+	path := defaultPath
+	if configPath != "" && configPath != "$HOME/.port-auth/config.json" {
+		path = os.ExpandEnv(configPath)
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}

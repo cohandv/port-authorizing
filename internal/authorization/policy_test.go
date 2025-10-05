@@ -206,4 +206,3 @@ func TestGetConnectionInfo_Details(t *testing.T) {
 		t.Errorf("Type = %v, want postgres", info["type"])
 	}
 }
-

@@ -96,10 +96,10 @@ func TestUser_Properties(t *testing.T) {
 
 func TestRolePolicy_TagMatch(t *testing.T) {
 	tests := []struct {
-		name     string
-		policy   RolePolicy
-		wantAny  bool
-		wantAll  bool
+		name    string
+		policy  RolePolicy
+		wantAny bool
+		wantAll bool
 	}{
 		{
 			name: "any match",
@@ -173,8 +173,8 @@ func TestAuthProviderConfig_Properties(t *testing.T) {
 		Type:    "oidc",
 		Enabled: true,
 		Config: map[string]string{
-			"issuer":     "http://localhost:8180",
-			"client_id":  "test",
+			"issuer":    "http://localhost:8180",
+			"client_id": "test",
 		},
 	}
 
@@ -207,4 +207,3 @@ func BenchmarkConnectionConfig(b *testing.B) {
 		_ = config.Port
 	}
 }
-

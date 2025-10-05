@@ -1,5 +1,11 @@
 # Port Authorizing
 
+[![Go 1.24+](https://img.shields.io/badge/Go-1.24+-00ADD8.svg?logo=go)](https://go.dev/)
+[![Docker Hub](https://img.shields.io/docker/v/cohandv/port-authorizing?label=docker&logo=docker)](https://hub.docker.com/r/cohandv/port-authorizing)
+[![Release](https://github.com/cohandv/port-authorizing/actions/workflows/release.yml/badge.svg)](https://github.com/cohandv/port-authorizing/actions/workflows/release.yml)
+[![Tests](https://github.com/cohandv/port-authorizing/actions/workflows/test.yml/badge.svg)](https://github.com/cohandv/port-authorizing/actions/workflows/test.yml)
+[![Docker Build](https://github.com/cohandv/port-authorizing/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/cohandv/port-authorizing/actions/workflows/docker-publish.yml)
+
 **Secure proxy for any service with authentication, authorization, and audit logging.**
 
 Port Authorizing acts as a transparent proxy between clients and backend services (PostgreSQL, HTTP, TCP, etc.), providing centralized authentication, role-based authorization, protocol-specific filtering, and comprehensive audit logging.

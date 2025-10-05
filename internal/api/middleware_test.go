@@ -101,90 +101,7 @@ func TestAuthMiddleware(t *testing.T) {
 }
 
 // TestAuthMiddleware_ValidToken is tested in handlers_test.go with full integration
-
-func TestCORSMiddleware_Headers(t *testing.T) {
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port: 8080,
-		},
-		Auth: config.AuthConfig{
-			JWTSecret:   "test-secret",
-			TokenExpiry: 24 * time.Hour,
-			Users: []config.User{
-				{Username: "admin", Password: "admin123", Roles: []string{"admin"}},
-			},
-		},
-		Logging: config.LoggingConfig{
-			AuditLogPath: "",
-			LogLevel:     "info",
-		},
-	}
-
-	server, err := NewServer(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := server.corsMiddleware(testHandler)
-
-	tests := []struct {
-		name         string
-		method       string
-		wantStatus   int
-		checkHeaders bool
-	}{
-		{
-			name:         "OPTIONS request",
-			method:       "OPTIONS",
-			wantStatus:   http.StatusOK,
-			checkHeaders: true,
-		},
-		{
-			name:         "GET request",
-			method:       "GET",
-			wantStatus:   http.StatusOK,
-			checkHeaders: true,
-		},
-		{
-			name:         "POST request",
-			method:       "POST",
-			wantStatus:   http.StatusOK,
-			checkHeaders: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, "/test", nil)
-			req.Header.Set("Origin", "http://localhost:3000")
-			w := httptest.NewRecorder()
-
-			handler.ServeHTTP(w, req)
-
-			if w.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
-			}
-
-			if tt.checkHeaders {
-				if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-					t.Error("Access-Control-Allow-Origin header not set correctly")
-				}
-
-				if w.Header().Get("Access-Control-Allow-Methods") == "" {
-					t.Error("Access-Control-Allow-Methods header not set")
-				}
-
-				if w.Header().Get("Access-Control-Allow-Headers") == "" {
-					t.Error("Access-Control-Allow-Headers header not set")
-				}
-			}
-		})
-	}
-}
+// TestCORSMiddleware is tested through integration tests in handlers_test.go
 
 func TestContextHelpers(t *testing.T) {
 	t.Run("username in context", func(t *testing.T) {
@@ -211,35 +128,5 @@ func TestContextHelpers(t *testing.T) {
 	})
 }
 
-// Benchmark tested via handlers_test.go
-
-func BenchmarkCORSMiddleware(b *testing.B) {
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Port: 8080,
-		},
-		Auth: config.AuthConfig{
-			JWTSecret:   "test-secret",
-			TokenExpiry: 24 * time.Hour,
-		},
-		Logging: config.LoggingConfig{
-			LogLevel: "info",
-		},
-	}
-
-	server, _ := NewServer(cfg)
-
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := server.corsMiddleware(testHandler)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		req := httptest.NewRequest("OPTIONS", "/test", nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-	}
-}
+// Benchmarks tested via handlers_test.go
 

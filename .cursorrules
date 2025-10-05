@@ -94,19 +94,31 @@ func BenchmarkFunctionName(b *testing.B) {
 
 ### 4. Coverage Targets
 
-Maintain or improve coverage for each package:
+**MANDATORY MINIMUM: All packages MUST maintain ≥ 70% coverage**
+
+Coverage requirements by package type:
 
 - **Critical packages** (auth, authorization, security): ≥ 80%
-- **Configuration and utilities**: ≥ 70%
-- **API/handlers**: ≥ 50%
-- **Overall project**: ≥ 50%
+- **All other packages** (config, api, proxy, audit, cli, etc.): ≥ 70%
+- **Overall project**: ≥ 70%
+
+**Coverage MUST NEVER decrease below 70% for any package.**
 
 Current baseline coverage:
-- `internal/authorization`: 90.3%
-- `internal/config`: 76.5%
-- `internal/audit`: 66.7%
-- `internal/security`: 15.0%
-- `internal/auth`: 7.4%
+- `internal/authorization`: 90.3% ✅
+- `internal/config`: 76.5% ✅
+- `internal/audit`: 66.7% ⚠️ (needs improvement to reach 70%)
+- `internal/proxy`: 16.2% ❌ (needs significant improvement)
+- `internal/security`: 15.0% ❌ (needs significant improvement)
+- `internal/auth`: 7.4% ❌ (needs significant improvement)
+- `internal/api`: 0.0% ❌ (needs tests)
+- `internal/cli`: 0.0% ❌ (needs tests)
+
+**When making ANY code changes:**
+1. Check current coverage: `go test ./internal/<package> -cover`
+2. Write tests to maintain or improve coverage
+3. Verify coverage hasn't decreased
+4. If coverage is below 70%, add tests before committing
 
 ### 5. Pre-Commit Workflow
 
@@ -178,6 +190,8 @@ func TestNewFunction(t *testing.T) {
 - ❌ Commenting out failing tests to make them pass
 - ❌ Skipping test updates when modifying functions
 - ❌ Decreasing test coverage without justification
+- ❌ **Committing code that drops package coverage below 70%**
+- ❌ **Merging PRs with test coverage below 70%**
 
 ### ✅ REQUIRED Actions
 
@@ -186,6 +200,8 @@ func TestNewFunction(t *testing.T) {
 - ✅ Update tests for ALL modified functions
 - ✅ Add tests for ALL bug fixes
 - ✅ Verify coverage hasn't decreased
+- ✅ **Ensure package coverage is ≥ 70% before committing**
+- ✅ **Run `make test-coverage` to verify coverage thresholds**
 
 ## Quick Reference
 
@@ -196,8 +212,18 @@ make test-unit
 # Run tests with verbose output
 make test-verbose
 
-# Generate coverage report
+# Generate coverage report (HTML + summary)
 make test-coverage
+
+# Check coverage for specific package
+go test ./internal/auth -cover
+go test ./internal/api -cover
+go test ./internal/proxy -cover
+
+# Verify 70% threshold for a package
+go test ./internal/<package> -coverprofile=coverage.out
+go tool cover -func=coverage.out | tail -1
+# Look for "total: (statements) XX.X%" - must be ≥ 70%
 
 # Run specific package tests
 go test ./internal/auth -v
@@ -211,6 +237,12 @@ go test ./... -race
 
 # Clean test cache
 go clean -testcache
+
+# Quick coverage check for all packages
+for pkg in $(go list ./internal/...); do
+  echo "Testing $pkg..."
+  go test $pkg -cover
+done
 ```
 
 ## Exception Cases
@@ -226,10 +258,16 @@ For everything else: **TESTS ARE MANDATORY**
 
 ## Summary
 
-**Golden Rule:** No code changes without tests. No commits without running tests.
+**Golden Rules:**
+1. No code changes without tests
+2. No commits without running tests
+3. **No commits with coverage below 70%**
 
 If you forget these rules, the AI should:
 1. Remind you to write tests
 2. Prompt you to run tests before committing
-3. Refuse to help commit code without passing tests
+3. **Check coverage and refuse to commit if below 70%**
+4. Refuse to help commit code without passing tests
+
+**Coverage First:** Always verify test coverage meets the 70% minimum threshold before committing. Run `make test-coverage` to see the full picture.
 

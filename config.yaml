@@ -130,8 +130,15 @@ policies:
       - env:test
     tag_match: any
     whitelist:
+      # PostgreSQL patterns
       - "^SELECT.*"
       - "^EXPLAIN.*"
+      # HTTP patterns (for HTTP/HTTPS connections)
+      - "^GET /.*"
+      - "^POST /api/.*"
+      - "^PUT /api/.*"
+      - "^PATCH /api/.*"
+      - "^DELETE /api/.*"
 
   # Developer has read-only access to production
   - name: dev-prod-readonly

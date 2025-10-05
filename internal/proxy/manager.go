@@ -74,9 +74,12 @@ func NewConnectionManager(maxDuration time.Duration) *ConnectionManager {
 }
 
 // CreateConnection creates a new proxy connection
-func (cm *ConnectionManager) CreateConnection(username string, connConfig *config.ConnectionConfig, duration time.Duration) (string, time.Time, error) {
+func (cm *ConnectionManager) CreateConnection(username string, connConfig *config.ConnectionConfig, duration time.Duration, whitelist []string, auditLogPath string) (string, time.Time, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+
+	// Generate unique connection ID first (needed for proxy creation)
+	connectionID := uuid.New().String()
 
 	// Create protocol-specific proxy
 	// Note: postgres doesn't use the Protocol interface, it has a dedicated handler
@@ -84,15 +87,19 @@ func (cm *ConnectionManager) CreateConnection(username string, connConfig *confi
 	var err error
 
 	if connConfig.Type != "postgres" {
-		proxy, err = NewProtocol(connConfig)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("failed to create proxy: %w", err)
+		if connConfig.Type == "http" || connConfig.Type == "https" {
+			// Create HTTP proxy with whitelist support
+			proxy = NewHTTPProxyWithWhitelist(connConfig, whitelist, auditLogPath, username, connectionID)
+		} else {
+			// Other protocols don't support whitelist yet
+			proxy, err = NewProtocol(connConfig)
+			if err != nil {
+				return "", time.Time{}, fmt.Errorf("failed to create proxy: %w", err)
+			}
 		}
 	}
 	// For postgres, Proxy will be nil - it's handled by handlePostgresProxy
 
-	// Generate unique connection ID
-	connectionID := uuid.New().String()
 	expiresAt := time.Now().Add(duration)
 
 	conn := &Connection{

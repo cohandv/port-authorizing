@@ -200,7 +200,7 @@ policies:
     whitelist:
       - ".*"  # Allow all in test
     metadata:
-      description: "Developers have full access to test environment"
+      description: "Developers have full access to test environment (PostgreSQL and HTTP)"
 
   - name: developer-staging
     roles:
@@ -209,14 +209,19 @@ policies:
       - env:staging
     tag_match: any
     whitelist:
-      - "^SELECT.*"
-      - "^INSERT INTO logs.*"
-      - "^INSERT INTO events.*"
-      - "^UPDATE.*WHERE id.*"
-      - "^GET .*"
-      - "^POST /api/.*"
+      # PostgreSQL whitelists (for postgres connections)
+      - "^SELECT.*"  # Allow SELECT queries
+      - "^INSERT INTO logs.*"  # Allow inserting logs
+      - "^INSERT INTO events.*"  # Allow inserting events
+      - "^UPDATE.*WHERE id.*"  # Allow UPDATE with WHERE clause
+      - "^EXPLAIN.*"  # Allow EXPLAIN for query analysis
+      # HTTP whitelists (for http/https connections)
+      - "^GET .*"  # Allow all GET requests
+      - "^POST /api/.*"  # Allow POST to API endpoints
+      - "^PUT /api/users/[0-9]+/profile$"  # Allow updating user profiles
+      - "^PATCH /api/.*"  # Allow PATCH requests
     metadata:
-      description: "Developers have limited access to staging"
+      description: "Developers have limited access to staging (SELECT, specific INSERTs for DBs; GET, POST, PUT, PATCH for APIs)"
 
   # Developer policy - read-only access to production
   - name: developer-prod-readonly
@@ -226,11 +231,15 @@ policies:
       - env:production
     tag_match: any
     whitelist:
-      - "^SELECT.*"
-      - "^EXPLAIN.*"
-      - "^GET .*"
+      # PostgreSQL whitelists (read-only)
+      - "^SELECT.*"  # Allow SELECT queries
+      - "^EXPLAIN.*"  # Allow EXPLAIN queries
+      # HTTP whitelists (read-only)
+      - "^GET .*"  # Allow all GET requests
+      - "^HEAD .*"  # Allow HEAD requests
+      - "^OPTIONS .*"  # Allow OPTIONS requests (CORS preflight)
     metadata:
-      description: "Developers have read-only access to production"
+      description: "Developers have read-only access to production (SELECT/EXPLAIN for DBs; GET/HEAD/OPTIONS for APIs)"
 
   # QA policy - full access to test, read-only to staging
   - name: qa-test-full
@@ -251,8 +260,12 @@ policies:
       - env:staging
     tag_match: any
     whitelist:
-      - "^SELECT.*"
-      - "^GET .*"
+      # PostgreSQL whitelists
+      - "^SELECT.*"  # Allow SELECT queries
+      # HTTP whitelists
+      - "^GET .*"  # Allow all GET requests
+      - "^HEAD .*"  # Allow HEAD requests
+      - "^OPTIONS .*"  # Allow OPTIONS for CORS
     metadata:
       description: "QA has read-only access to staging"
 

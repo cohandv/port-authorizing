@@ -7,15 +7,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 
+	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
 )
 
 // HTTPProxy handles HTTP/HTTPS proxying
 type HTTPProxy struct {
-	config *config.ConnectionConfig
-	client *http.Client
+	config       *config.ConnectionConfig
+	client       *http.Client
+	whitelist    []string
+	auditLogPath string
+	username     string
+	connectionID string
 }
 
 // NewHTTPProxy creates a new HTTP proxy
@@ -23,6 +29,18 @@ func NewHTTPProxy(config *config.ConnectionConfig) *HTTPProxy {
 	return &HTTPProxy{
 		config: config,
 		client: &http.Client{},
+	}
+}
+
+// NewHTTPProxyWithWhitelist creates a new HTTP proxy with whitelist support
+func NewHTTPProxyWithWhitelist(config *config.ConnectionConfig, whitelist []string, auditLogPath, username, connectionID string) *HTTPProxy {
+	return &HTTPProxy{
+		config:       config,
+		client:       &http.Client{},
+		whitelist:    whitelist,
+		auditLogPath: auditLogPath,
+		username:     username,
+		connectionID: connectionID,
 	}
 }
 
@@ -51,6 +69,63 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 	}
 	method := parts[0]
 	path := parts[1]
+
+	// Handle OPTIONS preflight requests
+	if method == "OPTIONS" {
+		// Add CORS headers for preflight
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusOK)
+
+		// Log OPTIONS request
+		if p.auditLogPath != "" {
+			audit.Log(p.auditLogPath, p.username, "http_preflight", p.config.Name, map[string]interface{}{
+				"connection_id": p.connectionID,
+				"method":        method,
+				"path":          path,
+			})
+		}
+		return nil
+	}
+
+	// Validate request against whitelist if configured
+	if len(p.whitelist) > 0 {
+		requestPattern := fmt.Sprintf("%s %s", method, path)
+		if !p.isRequestAllowed(requestPattern) {
+			// Log blocked request
+			if p.auditLogPath != "" {
+				audit.Log(p.auditLogPath, p.username, "http_request_blocked", p.config.Name, map[string]interface{}{
+					"connection_id": p.connectionID,
+					"method":        method,
+					"path":          path,
+					"reason":        "does not match whitelist",
+				})
+			}
+
+			// Add CORS headers even for blocked requests
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+
+			// Return 403 Forbidden
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error":"Request blocked by security policy","message":"This HTTP request is not allowed by the whitelist"}`))
+			return fmt.Errorf("request blocked by whitelist: %s %s", method, path)
+		}
+
+		// Log allowed request
+		if p.auditLogPath != "" {
+			audit.Log(p.auditLogPath, p.username, "http_request", p.config.Name, map[string]interface{}{
+				"connection_id": p.connectionID,
+				"method":        method,
+				"path":          path,
+				"allowed":       true,
+			})
+		}
+	}
 
 	// Build target URL
 	scheme := p.config.Scheme
@@ -108,8 +183,20 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 	}
 	defer resp.Body.Close()
 
-	// Copy response headers
+	// Add CORS headers (allow all origins for proxied connections)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Max-Age", "86400")
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Authorization")
+
+	// Copy response headers from backend
 	for key, values := range resp.Header {
+		// Don't override CORS headers we just set
+		if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+			continue
+		}
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
@@ -130,4 +217,34 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 func (p *HTTPProxy) Close() error {
 	p.client.CloseIdleConnections()
 	return nil
+}
+
+// isRequestAllowed checks if an HTTP request matches the whitelist
+// Pattern format: "METHOD /path/pattern"
+// Examples: "GET /api/.*", "POST /api/users", "GET /api/users/[0-9]+"
+func (p *HTTPProxy) isRequestAllowed(request string) bool {
+	if len(p.whitelist) == 0 {
+		return true // No whitelist means everything is allowed
+	}
+
+	for _, pattern := range p.whitelist {
+		// Make pattern case-insensitive for the HTTP method part
+		re, err := regexp.Compile("(?i)" + pattern)
+		if err != nil {
+			// Log error and skip this pattern
+			if p.auditLogPath != "" {
+				audit.Log(p.auditLogPath, p.username, "http_whitelist_error", p.config.Name, map[string]interface{}{
+					"pattern": pattern,
+					"error":   err.Error(),
+				})
+			}
+			continue
+		}
+
+		if re.MatchString(request) {
+			return true
+		}
+	}
+
+	return false
 }

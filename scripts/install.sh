@@ -56,7 +56,7 @@ LATEST_VERSION=$(curl -s https://api.github.com/repos/davidcohan/port-authorizin
 if [ -z "$LATEST_VERSION" ]; then
   echo -e "${RED}❌ Failed to fetch latest version${NC}"
   echo ""
-  echo "Possible reasons:"
+  echo "Possible reasons: "
   echo "  • Network connectivity issues"
   echo "  • GitHub API rate limiting"
   echo "  • No releases published yet"

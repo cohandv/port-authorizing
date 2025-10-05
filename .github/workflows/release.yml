@@ -14,11 +14,11 @@ jobs:
   release:
     name: Automatic Release
     runs-on: ubuntu-latest
-    
+
     outputs:
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -190,10 +190,10 @@ jobs:
           VERSION=${{ steps.get_version.outputs.VERSION }}
           BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
           GIT_COMMIT=$(git rev-parse --short HEAD)
-          
+
           mkdir -p dist
           BINARY_NAME="port-authorizing-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
-          
+
           go build -ldflags "\
             -X main.Version=${VERSION} \
             -X main.BuildTime=${BUILD_TIME} \
@@ -201,12 +201,12 @@ jobs:
             -s -w" \
             -o "dist/${BINARY_NAME}" \
             ./cmd/port-authorizing
-          
+
           # Create checksum
           cd dist
           sha256sum "${BINARY_NAME}" > "${BINARY_NAME}.sha256"
           cd ..
-          
+
           echo "Built: dist/${BINARY_NAME}"
           ls -lh dist/
 
@@ -223,7 +223,7 @@ jobs:
     needs: [release, build-binaries]
     if: needs.release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -252,14 +252,14 @@ jobs:
         with:
           script: |
             const version = 'v${{ needs.release.outputs.new_release_version }}';
-            
+
             // Get the existing release
             const { data: release } = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag: version
             });
-            
+
             // Append installation instructions
             const additionalNotes = `
 
@@ -319,7 +319,7 @@ jobs:
             sha256sum -c port-authorizing-linux-amd64.sha256
             \`\`\`
             `;
-            
+
             // Update the release
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
@@ -333,7 +333,7 @@ jobs:
     needs: [release]
     if: needs.release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -165,6 +165,97 @@ func TestLog_EmptyDetails(t *testing.T) {
 	}
 }
 
+func TestClose(t *testing.T) {
+	// Create temp files
+	tmpFile1, err := os.CreateTemp("", "audit-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create temp file 1: %v", err)
+	}
+	defer os.Remove(tmpFile1.Name())
+	tmpFile1.Close()
+
+	tmpFile2, err := os.CreateTemp("", "audit-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create temp file 2: %v", err)
+	}
+	defer os.Remove(tmpFile2.Name())
+	tmpFile2.Close()
+
+	// Log to multiple files
+	Log(tmpFile1.Name(), "user1", "action1", "resource1", nil)
+	Log(tmpFile2.Name(), "user2", "action2", "resource2", nil)
+
+	// Close should close all open files
+	Close()
+
+	// After Close, we should be able to log again (reopens files)
+	if err := Log(tmpFile1.Name(), "user3", "action3", "resource3", nil); err != nil {
+		t.Errorf("Log() after Close() error = %v", err)
+	}
+}
+
+func TestLog_ReopenAfterClose(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "audit-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	// Log, close, log again
+	Log(tmpFile.Name(), "user1", "action1", "resource1", nil)
+	Close()
+	Log(tmpFile.Name(), "user2", "action2", "resource2", nil)
+
+	// Read the log file
+	content, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	// Should have 2 log entries
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) != 2 {
+		t.Errorf("Log contains %d lines, want 2", len(lines))
+	}
+}
+
+func TestLog_ConcurrentWrites(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "audit-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	// Concurrent writes
+	done := make(chan bool)
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			Log(tmpFile.Name(), "user", "action", "resource", map[string]interface{}{
+				"id": id,
+			})
+			done <- true
+		}(i)
+	}
+
+	// Wait for all goroutines
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// Verify all writes completed
+	content, err := os.ReadFile(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(lines) != 10 {
+		t.Errorf("Log contains %d lines, want 10", len(lines))
+	}
+}
+
 func BenchmarkLog(b *testing.B) {
 	tmpFile, err := os.CreateTemp("", "audit-*.log")
 	if err != nil {

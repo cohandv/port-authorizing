@@ -1,3 +1,25 @@
+## [1.3.0](https://github.com/cohandv/port-authorizing/compare/v1.2.1...v1.3.0) (2025-10-05)
+
+
+### Features
+
+* add comprehensive unit tests for core packages ([94c6fae](https://github.com/cohandv/port-authorizing/commit/94c6faeeedabcef8abe0ce085c99f7630e05ef47))
+
+
+### Bug Fixes
+
+* address CVE vulnerabilities in Docker image ([4a6d803](https://github.com/cohandv/port-authorizing/commit/4a6d803f85009ae9bb1eb8c747813e9a06d36b24))
+
+
+### Documentation
+
+* add CVE fixes documentation ([9a61810](https://github.com/cohandv/port-authorizing/commit/9a618109fc3770b25c10c17eebbbcae454a66838))
+
+
+### CI/CD
+
+* add automated testing to GitHub Actions workflows ([e4f27f6](https://github.com/cohandv/port-authorizing/commit/e4f27f6511070bb7cc507c8da9db78f49560b2f0))
+
 ## [1.2.1](https://github.com/cohandv/port-authorizing/compare/v1.2.0...v1.2.1) (2025-10-05)
 
 

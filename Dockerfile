@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -64,5 +64,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 LABEL org.opencontainers.image.title="Port Authorizing"
 LABEL org.opencontainers.image.description="Secure database access proxy with authentication and authorization"
 LABEL org.opencontainers.image.source="https://github.com/yourusername/port-authorizing"
-LABEL org.opencontainers.image.version="${VERSION}"
 

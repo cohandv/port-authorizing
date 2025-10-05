@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.24'
 
       - name: Get version
         id: get_version
@@ -86,5 +86,5 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE_NAME }}
           short-description: "Secure database access proxy with authentication and authorization"
-          readme-filepath: ./README.md
+          readme-filepath: ./DOCKER_HUB_README.md
 

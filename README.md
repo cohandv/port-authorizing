@@ -1,546 +1,209 @@
 # Port Authorizing
 
-Enterprise-grade secure proxy system with multi-provider authentication, role-based access control, and comprehensive audit logging. Control and monitor access to PostgreSQL databases, HTTP APIs, and TCP services.
+**Secure database access proxy with authentication, authorization, and query whitelisting.**
+
+Port Authorizing acts as a transparent proxy between clients and backend services (PostgreSQL, HTTP, TCP), providing centralized authentication, role-based authorization, and SQL query filtering.
 
 ## Features
 
-### 🔐 Multi-Provider Authentication
-- **Local** - Username/password authentication
-- **OIDC** - OpenID Connect (Keycloak, Auth0, Okta, Google, Azure AD)
-- **LDAP** - Active Directory / OpenLDAP integration
-- **SAML2** - SAML 2.0 (framework ready)
+- 🔐 **Multi-Provider Authentication** - Local users, OIDC (Keycloak), LDAP, SAML2
+- 🛡️ **Role-Based Access Control** - Tag-based policies with different access per role
+- 📝 **Query Whitelisting** - Regex-based SQL filtering with audit logging
+- 🔒 **Credential Hiding** - Users never see backend credentials
+- 🌐 **Transparent Proxying** - Works with standard clients (psql, curl, etc.)
+- ⏱️ **Time-Limited Access** - Connections expire automatically
+- 📊 **Full Audit Logging** - All actions logged with user attribution
 
-### 🛡️ Role-Based Access Control (RBAC)
-- **Tag-Based Policies** - Connections tagged by environment, team, type
-- **Flexible Whitelisting** - Per-role query/request patterns
-- **Multi-Tag Matching** - ANY or ALL matching modes
-- **Environment Isolation** - Separate dev/staging/production access
+## Quick Start
 
-### 📊 Protocol Support
-- **PostgreSQL** - Transparent proxy with credential substitution
-- **HTTP/HTTPS** - REST API and web service proxying
-- **TCP** - Generic TCP stream proxying (Redis, MongoDB, etc.)
+### Installation
 
-### 🔍 Security & Monitoring
-- **Audit Logging** - Complete trail of all operations
-- **Connection Timeouts** - Automatic session expiration
-- **Query Whitelisting** - Regex-based validation
-- **LLM Analysis** - Optional AI risk detection (coming soon)
+```bash
+# Clone repository
+git clone https://github.com/yourusername/port-authorizing.git
+cd port-authorizing
+
+# Build
+make build
+
+# Or use Docker
+docker pull cohandv/port-authorizing:latest
+```
+
+### Basic Usage
+
+```bash
+# Start server
+port-authorizing server --config config.yaml
+
+# Login (opens browser for OIDC)
+port-authorizing login
+
+# List available connections
+port-authorizing list
+
+# Connect to database
+port-authorizing connect postgres-prod -l 5433
+
+# Use standard client
+psql -h localhost -p 5433 -U your-username -d database
+```
 
 ## Architecture
 
 ```
-┌─────────┐      ┌─────────┐      ┌──────────────┐
-│  User   │──────│   CLI   │──────│  API Server  │
-│ (psql)  │      │ (proxy) │      │   (AuthN)    │
-└─────────┘      └─────────┘      │   (AuthZ)    │
-                                   │   (Audit)    │
-                                   └──────┬───────┘
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-             ┌──────▼──────┐     ┌───────▼──────┐     ┌───────▼──────┐
-             │ PostgreSQL  │     │ HTTP Services│     │ TCP Services │
-             │  (prod/dev) │     │   (APIs)     │     │ (Redis, etc) │
-             └─────────────┘     └──────────────┘     └──────────────┘
-                    │                     │                     │
-                    └─────────────────────┴─────────────────────┘
-                              Authentication Providers
-                           (Keycloak, LDAP, Local Users)
+┌─────────┐         ┌──────────────┐         ┌──────────┐
+│  Client │────────▶│ Port Auth    │────────▶│ Backend  │
+│ (psql)  │         │ Proxy        │         │ Postgres │
+└─────────┘         └──────────────┘         └──────────┘
+                     │
+                     ├─ JWT Authentication
+                     ├─ Role Authorization
+                     ├─ Query Validation
+                     └─ Audit Logging
 ```
 
-## Quick Start
-
-### Build
-
-```bash
-# Build for current platform
-make build
-
-# Build for all platforms
-make build-all
-
-# Build optimized release
-make build-release
-```
-
-### Configure
-
-Create `config.yaml` with your connections and authentication:
-
-```yaml
-auth:
-  jwt_secret: "your-secret-key"
-
-  # Authentication providers
-  providers:
-    - name: keycloak
-      type: oidc
-      enabled: true
-      config:
-        issuer: "http://localhost:8180/realms/portauth"
-        client_id: "port-authorizing"
-        client_secret: "your-secret"
-
-  # Local users (backward compatible)
-  users:
-    - username: admin
-      password: admin123
-      roles: [admin]
-
-connections:
-  - name: postgres-prod
-    type: postgres
-    host: db.example.com
-    port: 5432
-    tags: [env:production, type:database]
-    backend_username: "dbuser"
-    backend_password: "dbpass"
-
-policies:
-  - name: admin-full-access
-    roles: [admin]
-    tags: [env:production]
-    whitelist: [".*"]
-```
-
-### Run
-
-```bash
-# Start Docker test environment
-make docker-up
-
-# Start API server
-./bin/port-authorizing-api
-
-# Login
-./bin/port-authorizing-cli login -u admin -p admin123
-
-# List available connections
-./bin/port-authorizing-cli list
-
-# Connect to PostgreSQL
-./bin/port-authorizing-cli connect postgres-prod -l 5433
-
-# Use with psql
-psql -h localhost -p 5433 -U anyuser
-```
-
-## Detailed Usage
-
-### API Server
-
-```bash
-# Start the API server
-./bin/port-authorizing-api
-
-# With custom config
-./bin/port-authorizing-api --config /path/to/config.yaml
-
-# Development mode (auto-reload)
-make dev
-```
-
-### CLI Client
-
-```bash
-# Login with local auth
-./bin/port-authorizing-cli login -u admin -p admin123
-
-# Login with OIDC (if configured)
-./bin/port-authorizing-cli login -u alice -p password123
-
-# List available connections (filtered by role)
-./bin/port-authorizing-cli list
-
-# Connect to PostgreSQL
-./bin/port-authorizing-cli connect postgres-prod -l 5433 -d 1h
-
-# Connect to HTTP API
-./bin/port-authorizing-cli connect api-gateway -l 8080 -d 2h
-
-# Use proxied connections
-psql -h localhost -p 5433 -U anyuser
-curl http://localhost:8080/api/endpoint
-```
-
-## Configuration
-
-### Complete Example (`config.yaml`)
+## Configuration Example
 
 ```yaml
 server:
   port: 8080
-  max_connection_duration: 2h
 
 auth:
-  jwt_secret: "change-this-in-production"
-  token_expiry: 24h
-
-  # Multiple authentication providers
   providers:
-    # OIDC (Keycloak, Auth0, Okta, etc.)
     - name: keycloak
       type: oidc
       enabled: true
       config:
-        issuer: "http://localhost:8180/realms/portauth"
+        issuer: "https://keycloak.example.com/realms/myapp"
         client_id: "port-authorizing"
-        client_secret: "your-client-secret"
-        redirect_url: "http://localhost:8080/auth/callback/oidc"
         roles_claim: "roles"
-        username_claim: "preferred_username"
 
-    # LDAP / Active Directory
-    - name: corporate-ldap
-      type: ldap
-      enabled: false
-      config:
-        url: "ldap.example.com:389"
-        bind_dn: "cn=admin,dc=example,dc=com"
-        bind_password: "adminpass"
-        user_base_dn: "ou=users,dc=example,dc=com"
-        user_filter: "(uid=%s)"
-        group_base_dn: "ou=groups,dc=example,dc=com"
-
-  # Local users (backward compatible)
-  users:
-    - username: admin
-      password: admin123
-      roles: [admin]
-    - username: developer
-      password: dev123
-      roles: [developer]
-
-# Connections with tags
 connections:
   - name: postgres-prod
     type: postgres
-    host: prod-db.example.com
+    host: prod-db.internal
     port: 5432
     tags:
       - env:production
-      - type:database
-      - team:backend
-    backend_username: "produser"
-    backend_password: "prodpass"
-    backend_database: "app"
-    metadata:
-      description: "Production database"
+    backend_username: "app_user"
+    backend_password: "${DB_PASSWORD}"
 
-  - name: postgres-dev
-    type: postgres
-    host: dev-db.example.com
-    port: 5432
-    tags:
-      - env:dev
-      - type:database
-      - team:backend
-    backend_username: "devuser"
-    backend_password: "devpass"
-
-  - name: api-gateway
-    type: http
-    host: api.internal.example.com
-    port: 443
-    scheme: https
-    tags:
-      - env:production
-      - type:api
-
-# Role-based access policies
 policies:
-  # Admins have full access
-  - name: admin-all
-    roles: [admin]
-    tags: [env:production, env:dev]
-    tag_match: any
-    whitelist: [".*"]
+  - name: developer-readonly
+    roles:
+      - developer
+    tags:
+      - env:production
+    whitelist:
+      - "^SELECT.*"
+      - "^EXPLAIN.*"
+```
 
-  # Developers: full dev, read-only prod
-  - name: dev-full-dev
+## Documentation
+
+📚 **[Full Documentation](docs/README.md)**
+
+- [Getting Started Guide](docs/guides/getting-started.md)
+- [Authentication Setup](docs/guides/authentication.md)
+- [Configuration Reference](docs/guides/configuration.md)
+- [Architecture](docs/architecture/ARCHITECTURE.md)
+- [Deployment Guide](docs/deployment/building.md)
+
+## Use Cases
+
+### Secure Production Database Access
+
+Give developers temporary SELECT-only access to production databases without sharing credentials:
+
+```bash
+# Developer workflow
+port-authorizing login  # Authenticates via OIDC
+port-authorizing connect postgres-prod -l 5433
+psql -h localhost -p 5433 -U alice -d myapp
+
+# Can execute: SELECT, EXPLAIN
+# Cannot execute: UPDATE, DELETE, DROP
+# All queries logged with username
+```
+
+### Time-Limited Access
+
+Connections automatically expire:
+
+```yaml
+connections:
+  - name: postgres-prod
+    duration: 30m  # Access expires after 30 minutes
+```
+
+### Multi-Environment Access Control
+
+Different users have different access per environment:
+
+```yaml
+policies:
+  - name: dev-full-test
     roles: [developer]
-    tags: [env:dev]
-    tag_match: any
-    whitelist: [".*"]
+    tags: [env:test]
+    whitelist: [".*"]  # Full access to test
 
   - name: dev-readonly-prod
     roles: [developer]
     tags: [env:production]
-    tag_match: any
-    whitelist:
-      - "^SELECT.*"
-      - "^EXPLAIN.*"
-      - "^GET .*"
-
-security:
-  enable_llm_analysis: false
-
-logging:
-  audit_log_path: "audit.log"
-  log_level: "info"
+    whitelist: ["^SELECT.*", "^EXPLAIN.*"]  # Read-only in prod
 ```
-
-See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for detailed configuration guide.
-
-## Feature Highlights
-
-### Authentication
-- ✅ Multiple authentication providers (Local, OIDC, LDAP, SAML2)
-- ✅ JWT token-based sessions
-- ✅ Role extraction from auth providers
-- ✅ Provider failover and chaining
-
-### Authorization
-- ✅ Role-based access control (RBAC)
-- ✅ Tag-based connection policies
-- ✅ Flexible whitelist patterns (SQL, HTTP, TCP)
-- ✅ Multi-tag matching (any/all)
-- ✅ Environment isolation (dev/staging/prod)
-
-### Protocols
-- ✅ PostgreSQL with credential substitution
-- ✅ HTTP/HTTPS with full request proxying
-- ✅ Generic TCP streaming
-- ✅ Protocol-aware query logging
-- ✅ Transparent connection handling
-
-### Security
-- ✅ Comprehensive audit logging
-- ✅ Automatic connection timeouts
-- ✅ Query/request whitelisting
-- ✅ Connection ownership verification
-- ⏳ LLM-based risk analysis
-- ⏳ Rate limiting
-- ⏳ IP-based restrictions
-
-## Testing
-
-### Quick End-to-End Test
-
-```bash
-# Run comprehensive test suite
-./test.sh
-
-# Or using make
-make test-e2e
-```
-
-This will:
-1. Start all Docker services (PostgreSQL, Nginx, Keycloak, LDAP)
-2. Start the API server
-3. Test local authentication
-4. Test OIDC authentication (Keycloak)
-5. Test LDAP authentication
-6. Test role-based connection filtering
-7. Test HTTP and PostgreSQL proxying
-8. Verify audit logging
-9. Clean up
-
-### Docker Test Environment
-
-```bash
-# Start all services
-make docker-up
-
-# This starts:
-# - PostgreSQL (5432)
-# - Nginx (8888)
-# - Keycloak (8180) - OIDC/SAML2 provider
-# - OpenLDAP (389) - LDAP server
-# - phpLDAPadmin (8181) - LDAP UI
-```
-
-**Test Users** (password: `password123`):
-- **alice** - developer role
-- **bob** - admin role
-- **charlie** - qa role
-
-### Manual Testing
-
-```bash
-# Start services
-make docker-up
-
-# Start API
-./bin/port-authorizing-api &
-
-# Test local auth
-./bin/port-authorizing-cli login -u admin -p admin123
-
-# Test OIDC (Keycloak)
-./bin/port-authorizing-cli login -u alice -p password123
-
-# List connections (role-based filtering)
-./bin/port-authorizing-cli list
-
-# Connect to services
-./bin/port-authorizing-cli connect postgres-test -l 5433
-psql -h localhost -p 5433 -U testuser testdb
-
-# Test HTTP proxy
-./bin/port-authorizing-cli connect nginx-server -l 9090
-curl http://localhost:9090/
-
-# Check audit log
-tail -f audit.log | jq
-```
-
-### Unit Tests
-
-```bash
-# Run Go unit tests
-make test
-
-# With coverage
-go test -cover ./...
-```
-
-See [DOCKER_TESTING.md](DOCKER_TESTING.md) and [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for detailed guides.
 
 ## Development
-
-### Building
-
-```bash
-# Build for current platform
-make build
-
-# Build optimized release
-make build-release
-
-# Build for specific platforms
-make build-linux          # Linux amd64
-make build-linux-arm64    # Linux ARM64
-make build-darwin         # macOS Intel
-make build-darwin-arm64   # macOS Apple Silicon
-make build-windows        # Windows amd64
-
-# Build for all platforms
-make build-all
-
-# Cross-compile and create archives
-make cross-compile
-
-# Build Docker image
-make build-docker
-```
-
-### Development Workflow
 
 ```bash
 # Install dependencies
 make deps
 
-# Format code
-make fmt
-
-# Run linter
-make lint
-
-# Run in development mode (auto-reload)
-make dev
-
 # Run tests
 make test
 
-# Run E2E tests
-make test-e2e
+# Build for all platforms
+make build-all
+
+# Run locally
+make dev
 ```
 
-### Docker Services
+## Docker Compose (Testing)
 
 ```bash
-# Start all services
-make docker-up
+# Start all services (PostgreSQL, Keycloak, LDAP)
+docker-compose up -d
+
+# Setup Keycloak
+./docker/setup-keycloak.sh setup
 
 # Stop services
-make docker-down
-
-# View logs
-make docker-logs
+docker-compose down
 ```
 
-### Environment Variables
+## Security
 
-```bash
-# Custom version
-VERSION=1.0.0 make build
+- ✅ **No credential sharing** - Backend passwords never exposed to users
+- ✅ **Username enforcement** - Users can only connect as themselves
+- ✅ **Query validation** - All queries checked against whitelist before execution
+- ✅ **Audit trail** - Every action logged with user identity
+- ✅ **Time-bound access** - Connections expire automatically
+- ✅ **JWT-based auth** - Cryptographically signed tokens
 
-# Custom output directory
-BIN_DIR=/tmp/build make build
-```
-
-## Security Best Practices
-
-### Authentication
-- ✅ Use OIDC or LDAP in production (not local users)
-- ✅ Rotate JWT secrets regularly
-- ✅ Set appropriate token expiry times
-- ✅ Use strong passwords/secrets
-
-### Authorization
-- ✅ Apply least privilege principle
-- ✅ Use specific whitelist patterns (avoid `.*`)
-- ✅ Tag connections consistently
-- ✅ Review policies regularly
-
-### Deployment
-- ✅ Use TLS for API server
-- ✅ Rotate backend database credentials
-- ✅ Store secrets in environment variables or secret managers
-- ✅ Enable audit logging
-- ✅ Monitor audit logs for anomalies
-- ✅ Set appropriate connection timeouts
-
-### Network
-- ✅ Run API behind reverse proxy (nginx, traefik)
-- ✅ Use firewall rules to restrict access
-- ✅ Enable network segmentation
-- ✅ Use VPN for remote access
-
-## Documentation
-
-- [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) - Complete auth/authz guide
-- [AUTH_UPGRADE_SUMMARY.md](AUTH_UPGRADE_SUMMARY.md) - Migration and upgrade guide
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-- [DOCKER_TESTING.md](DOCKER_TESTING.md) - Docker testing guide
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Quick reference
-- `config.example.yaml` - Comprehensive configuration example
+See [Security Improvements](docs/security/security-improvements.md) for details.
 
 ## Contributing
 
-Contributions welcome! Please read the architecture docs and follow the existing code style.
-
-```bash
-# Fork and clone
-git clone https://github.com/yourusername/port-authorizing
-cd port-authorizing
-
-# Create feature branch
-git checkout -b feature/my-feature
-
-# Make changes and test
-make test
-make test-e2e
-
-# Format and lint
-make fmt
-make lint
-
-# Commit and push
-git commit -m "Add my feature"
-git push origin feature/my-feature
-```
+Contributions welcome! Please read our contributing guidelines and submit PRs.
 
 ## License
 
-MIT
+[Your License]
 
 ## Support
 
-For issues, questions, or contributions:
-- Open an issue on GitHub
-- Check documentation in `AUTHENTICATION_GUIDE.md`
-- Review example config in `config.example.yaml`
-
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/port-authorizing/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/port-authorizing/discussions)

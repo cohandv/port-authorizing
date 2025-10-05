@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/cohandv/port-authorizing/compare/v1.2.0...v1.2.1) (2025-10-05)
+
+
+### Documentation
+
+* add prominent GitHub repository links to Docker Hub README ([36e11b7](https://github.com/cohandv/port-authorizing/commit/36e11b7fe8085994d4f2ff93db0a4e09120f10e1))
+
 ## [1.2.0](https://github.com/cohandv/port-authorizing/compare/v1.1.0...v1.2.0) (2025-10-05)
 
 

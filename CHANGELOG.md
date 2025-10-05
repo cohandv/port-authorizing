@@ -1,3 +1,10 @@
+## [1.4.0](https://github.com/cohandv/port-authorizing/compare/v1.3.0...v1.4.0) (2025-10-05)
+
+
+### Features
+
+* implemented whitelist of http endpoints ([4fe5c9e](https://github.com/cohandv/port-authorizing/commit/4fe5c9e54fce09939b7ce5e9dda0dde26e41cc8d))
+
 ## [1.3.0](https://github.com/cohandv/port-authorizing/compare/v1.2.1...v1.3.0) (2025-10-05)
 
 

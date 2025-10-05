@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -340,11 +340,8 @@ jobs:
         with:
           ref: main
 
-      - name: Create version tag for Docker workflow
+      - name: Trigger Docker workflow by fetching new tag
         run: |
           VERSION="v${{ needs.release.outputs.new_release_version }}"
-          echo "Version tag: $VERSION"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "$VERSION"
-          git push origin "$VERSION" --force
+          echo "Version tag created by semantic-release: $VERSION"
+          echo "Docker workflow will be triggered automatically by the tag push"

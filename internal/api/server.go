@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/authorization"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/davidcohan/port-authorizing/internal/proxy"
@@ -14,12 +15,13 @@ import (
 
 // Server represents the API server
 type Server struct {
-	config     *config.Config
-	router     *mux.Router
-	httpServer *http.Server
-	connMgr    *proxy.ConnectionManager
-	authSvc    *AuthService
-	authz      *authorization.Authorizer
+	config      *config.Config
+	router      *mux.Router
+	httpServer  *http.Server
+	connMgr     *proxy.ConnectionManager
+	authSvc     *AuthService
+	authz       *authorization.Authorizer
+	approvalMgr *approval.Manager
 }
 
 // NewServer creates a new API server instance
@@ -29,12 +31,40 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
 	}
 
+	// Initialize approval manager
+	approvalMgr := approval.NewManager(5 * time.Minute) // Default 5 minute timeout
+
+	// Configure approval providers if enabled
+	if cfg.Approval != nil && cfg.Approval.Enabled {
+		if cfg.Approval.Webhook != nil && cfg.Approval.Webhook.URL != "" {
+			webhookProvider := approval.NewWebhookProvider(cfg.Approval.Webhook.URL)
+			approvalMgr.RegisterProvider(webhookProvider)
+		}
+
+		if cfg.Approval.Slack != nil && cfg.Approval.Slack.WebhookURL != "" {
+			slackProvider := approval.NewSlackProvider(
+				cfg.Approval.Slack.WebhookURL,
+				cfg.Server.BaseURL,
+			)
+			approvalMgr.RegisterProvider(slackProvider)
+		}
+
+		// Add approval patterns
+		for _, pattern := range cfg.Approval.Patterns {
+			timeout := time.Duration(pattern.TimeoutSeconds) * time.Second
+			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, timeout); err != nil {
+				return nil, fmt.Errorf("failed to add approval pattern: %w", err)
+			}
+		}
+	}
+
 	s := &Server{
-		config:  cfg,
-		router:  mux.NewRouter(),
-		connMgr: proxy.NewConnectionManager(cfg.Server.MaxConnectionDuration),
-		authSvc: authSvc,
-		authz:   authorization.NewAuthorizer(cfg),
+		config:      cfg,
+		router:      mux.NewRouter(),
+		connMgr:     proxy.NewConnectionManager(cfg.Server.MaxConnectionDuration),
+		authSvc:     authSvc,
+		authz:       authorization.NewAuthorizer(cfg),
+		approvalMgr: approvalMgr,
 	}
 
 	s.setupRoutes()
@@ -62,6 +92,13 @@ func (s *Server) setupRoutes() {
 
 	// Transparent proxy endpoint - accepts TCP connection and forwards to target
 	api.HandleFunc("/proxy/{connectionID}", s.handleProxyStream).Methods("POST", "GET", "PUT", "DELETE", "CONNECT", "PATCH", "OPTIONS")
+
+	// Approval endpoints (can be accessed via webhook callbacks, so don't require auth)
+	s.router.HandleFunc("/api/approvals/{request_id}/approve", s.handleApproveRequest).Methods("GET", "POST", "OPTIONS")
+	s.router.HandleFunc("/api/approvals/{request_id}/reject", s.handleRejectRequest).Methods("GET", "POST", "OPTIONS")
+
+	// Admin endpoint for pending approvals (requires auth)
+	api.HandleFunc("/approvals/pending", s.handleGetPendingApprovals).Methods("GET", "OPTIONS")
 }
 
 // corsMiddleware adds CORS headers to all responses (allow all origins)

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/davidcohan/port-authorizing/internal/config"
 )
@@ -60,18 +61,30 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		case "ldap":
 			provider, err = NewLDAPProvider(providerCfg)
 		default:
-			return nil, fmt.Errorf("unknown auth provider type: %s", providerCfg.Type)
+			// Log but don't fail for unknown provider types
+			log.Printf("⚠️  Warning: unknown auth provider type '%s' (name: %s) - skipping", providerCfg.Type, providerCfg.Name)
+			continue
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize %s provider: %w", providerCfg.Name, err)
+			// Log but don't fail - provider might be temporarily unavailable
+			log.Printf("⚠️  Warning: failed to initialize %s provider '%s': %v - skipping", providerCfg.Type, providerCfg.Name, err)
+			log.Printf("   The server will start without this provider. It will be unavailable until the server is restarted.")
+			continue
 		}
 
 		m.providers = append(m.providers, provider)
+		log.Printf("✅ Initialized %s provider: %s", providerCfg.Type, providerCfg.Name)
 	}
 
 	if len(m.providers) == 0 {
-		return nil, fmt.Errorf("no authentication providers configured")
+		log.Println("⚠️  Warning: no authentication providers successfully initialized!")
+		log.Println("   This means authentication will NOT work until you:")
+		log.Println("   1. Fix provider configurations (check OIDC/LDAP/SAML2 connectivity)")
+		log.Println("   2. Or add local users to config.yaml")
+		log.Println("   3. Then restart the server")
+		log.Println("")
+		log.Println("   Server will continue to start, but API authentication endpoints will fail.")
 	}
 
 	return m, nil

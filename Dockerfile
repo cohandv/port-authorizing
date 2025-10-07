@@ -44,8 +44,6 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/port-authorizing /usr/local/bin/port-authorizing
 
-# Copy example config
-COPY config.example.yaml /app/config.example.yaml
 
 # Create directories for data
 RUN mkdir -p /app/data /app/logs && \

@@ -16,12 +16,14 @@ type Config struct {
 	Policies    []RolePolicy       `yaml:"policies"`
 	Security    SecurityConfig     `yaml:"security"`
 	Logging     LoggingConfig      `yaml:"logging"`
+	Approval    *ApprovalConfig    `yaml:"approval,omitempty"`
 }
 
 // ServerConfig contains server settings
 type ServerConfig struct {
 	Port                  int           `yaml:"port"`
 	MaxConnectionDuration time.Duration `yaml:"max_connection_duration"`
+	BaseURL               string        `yaml:"base_url,omitempty"` // Base URL for callbacks (e.g., for Slack approval buttons)
 }
 
 // AuthConfig contains authentication settings
@@ -91,6 +93,32 @@ type SecurityConfig struct {
 type LoggingConfig struct {
 	AuditLogPath string `yaml:"audit_log_path"`
 	LogLevel     string `yaml:"log_level"`
+}
+
+// ApprovalConfig contains approval workflow settings
+type ApprovalConfig struct {
+	Enabled  bool                    `yaml:"enabled"`
+	Patterns []ApprovalPatternConfig `yaml:"patterns"`
+	Webhook  *WebhookApprovalConfig  `yaml:"webhook,omitempty"`
+	Slack    *SlackApprovalConfig    `yaml:"slack,omitempty"`
+}
+
+// ApprovalPatternConfig defines which requests require approval
+type ApprovalPatternConfig struct {
+	Pattern        string   `yaml:"pattern"`             // Regex pattern "^METHOD /path$"
+	Tags           []string `yaml:"tags,omitempty"`      // Connection tags (e.g., "env:prod", "team:backend")
+	TagMatch       string   `yaml:"tag_match,omitempty"` // "all" (default) or "any"
+	TimeoutSeconds int      `yaml:"timeout_seconds"`     // Approval timeout in seconds
+}
+
+// WebhookApprovalConfig configures generic webhook approvals
+type WebhookApprovalConfig struct {
+	URL string `yaml:"url"` // Webhook endpoint URL
+}
+
+// SlackApprovalConfig configures Slack approvals
+type SlackApprovalConfig struct {
+	WebhookURL string `yaml:"webhook_url"` // Slack incoming webhook URL
 }
 
 // LoadConfig loads configuration from a YAML file

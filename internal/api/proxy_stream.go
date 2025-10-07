@@ -37,7 +37,13 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For other types (http, tcp), use transparent TCP proxy
+	// For HTTP/HTTPS connections, use HTTP proxy handler (with approval support)
+	if conn.Config.Type == "http" || conn.Config.Type == "https" {
+		s.handleHTTPProxyStream(w, r)
+		return
+	}
+
+	// For other types (tcp), use transparent TCP proxy
 
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_stream", conn.Config.Name, map[string]interface{}{

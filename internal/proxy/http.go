@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
 )
@@ -22,6 +24,7 @@ type HTTPProxy struct {
 	auditLogPath string
 	username     string
 	connectionID string
+	approvalMgr  *approval.Manager
 }
 
 // NewHTTPProxy creates a new HTTP proxy
@@ -41,7 +44,13 @@ func NewHTTPProxyWithWhitelist(config *config.ConnectionConfig, whitelist []stri
 		auditLogPath: auditLogPath,
 		username:     username,
 		connectionID: connectionID,
+		approvalMgr:  nil, // Will be set later if approvals are enabled
 	}
+}
+
+// SetApprovalManager sets the approval manager for this proxy
+func (p *HTTPProxy) SetApprovalManager(mgr *approval.Manager) {
+	p.approvalMgr = mgr
 }
 
 // HandleRequest proxies HTTP requests
@@ -124,6 +133,84 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 				"path":          path,
 				"allowed":       true,
 			})
+		}
+	}
+
+	// Check if approval is required for this request
+	if p.approvalMgr != nil {
+		requiresApproval, timeout := p.approvalMgr.RequiresApproval(method, path, p.config.Tags)
+		if requiresApproval {
+			// Request approval
+			approvalReq := &approval.Request{
+				Username:     p.username,
+				ConnectionID: p.connectionID,
+				Method:       method,
+				Path:         path,
+				Metadata: map[string]string{
+					"connection_name": p.config.Name,
+					"connection_type": p.config.Type,
+				},
+			}
+
+			// Log approval request
+			if p.auditLogPath != "" {
+				audit.Log(p.auditLogPath, p.username, "http_approval_requested", p.config.Name, map[string]interface{}{
+					"connection_id": p.connectionID,
+					"method":        method,
+					"path":          path,
+					"timeout":       timeout.String(),
+				})
+			}
+
+			// Wait for approval with timeout
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+
+			approvalResp, err := p.approvalMgr.RequestApproval(ctx, approvalReq, timeout)
+			if err != nil {
+				// Add CORS headers
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(fmt.Sprintf(`{"error":"Approval request failed","message":"%s"}`, err.Error())))
+				return fmt.Errorf("approval request failed: %w", err)
+			}
+
+			// Check approval decision
+			if approvalResp.Decision != approval.DecisionApproved {
+				// Log rejection/timeout
+				if p.auditLogPath != "" {
+					audit.Log(p.auditLogPath, p.username, "http_approval_rejected", p.config.Name, map[string]interface{}{
+						"connection_id": p.connectionID,
+						"method":        method,
+						"path":          path,
+						"decision":      approvalResp.Decision,
+						"reason":        approvalResp.Reason,
+						"rejected_by":   approvalResp.ApprovedBy,
+					})
+				}
+
+				// Add CORS headers
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
+
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(fmt.Sprintf(`{"error":"Request not approved","message":"Approval decision: %s - %s"}`, approvalResp.Decision, approvalResp.Reason)))
+				return fmt.Errorf("request not approved: %s", approvalResp.Decision)
+			}
+
+			// Log approval success
+			if p.auditLogPath != "" {
+				audit.Log(p.auditLogPath, p.username, "http_approval_granted", p.config.Name, map[string]interface{}{
+					"connection_id": p.connectionID,
+					"method":        method,
+					"path":          path,
+					"approved_by":   approvalResp.ApprovedBy,
+				})
+			}
 		}
 	}
 

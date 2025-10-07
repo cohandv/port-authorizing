@@ -1,6 +1,7 @@
 server:
   port: 8080
   max_connection_duration: 2h
+  base_url: "http://localhost:8080"  # Base URL for approval callbacks
 
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
@@ -291,3 +292,35 @@ security:
 logging:
   audit_log_path: "audit.log"
   log_level: "info"
+
+# Approval workflow configuration
+# Requires human approval for certain commands before execution
+approval:
+  enabled: false  # Set to true to enable approval workflow
+
+  # Define which requests require approval (regex patterns + tags)
+  patterns:
+    # Require approval for DELETE operations ONLY on production databases
+    - pattern: "^DELETE /.*"
+      tags: ["env:production"]  # Only matches connections tagged with env:production
+      tag_match: all  # "all" (default) = must have ALL tags, "any" = must have ANY tag
+      timeout_seconds: 300  # 5 minutes - how long to wait for human approval
+
+    # Require approval for POST to admin endpoints on ANY environment
+    - pattern: "^POST /admin/.*"
+      tags: []  # Empty tags = applies to ALL connections
+      timeout_seconds: 600  # 10 minutes
+
+    # Require approval for dangerous operations on production OR backend team databases
+    - pattern: "^(DROP|TRUNCATE|ALTER) .*"
+      tags: ["env:production", "team:backend"]
+      tag_match: any  # Matches if connection has ANY of these tags
+      timeout_seconds: 900  # 15 minutes
+
+  # Generic webhook for approval notifications
+  webhook:
+    url: "https://your-approval-service.com/webhook"
+
+  # Slack integration for approvals (with interactive buttons)
+  slack:
+    webhook_url: "https://hooks.slack.com/services/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"

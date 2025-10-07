@@ -3,6 +3,7 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/binary"
 	"encoding/hex"
@@ -10,9 +11,11 @@ import (
 	"io"
 	"net"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/xdg-go/scram"
@@ -26,6 +29,7 @@ type PostgresAuthProxy struct {
 	connectionID string
 	apiConfig    *config.Config
 	whitelist    []string
+	approvalMgr  *approval.Manager
 }
 
 // NewPostgresAuthProxy creates a postgres proxy with auth handling
@@ -37,7 +41,13 @@ func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, 
 		connectionID: connectionID,
 		apiConfig:    apiConfig,
 		whitelist:    whitelist,
+		approvalMgr:  nil, // Will be set later if approvals are enabled
 	}
+}
+
+// SetApprovalManager sets the approval manager for this proxy
+func (p *PostgresAuthProxy) SetApprovalManager(mgr *approval.Manager) {
+	p.approvalMgr = mgr
 }
 
 // HandleConnection handles the full postgres connection with auth
@@ -626,7 +636,7 @@ func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries boo
 	}
 }
 
-// validateAndLogQuery extracts queries, validates against whitelist, and logs
+// validateAndLogQuery extracts queries, validates against whitelist, checks approval, and logs
 // Returns (blocked, query) where blocked=true if query should be blocked
 func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 	for i := 0; i < len(data); i++ {
@@ -638,7 +648,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 				query := string(bytes.TrimRight(queryBytes, "\x00"))
 
 				if query != "" {
-					// Check whitelist
+					// Check whitelist first
 					allowed := p.isQueryAllowed(query)
 
 					// Log the query with whitelist result
@@ -658,6 +668,70 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 							"reason":        "whitelist_violation",
 						})
 						return true, query
+					}
+
+					// Check if approval is required for this query
+					if p.approvalMgr != nil {
+						normalizedQuery := strings.TrimSpace(query)
+						requiresApproval, timeout := p.approvalMgr.RequiresApproval(normalizedQuery, "", p.config.Tags)
+						if requiresApproval {
+							// Request approval
+							approvalReq := &approval.Request{
+								Username:     p.username,
+								ConnectionID: p.connectionID,
+								Method:       normalizedQuery, // For postgres, query is the "method"
+								Path:         "",              // No path for SQL queries
+								Metadata: map[string]string{
+									"connection_name": p.config.Name,
+									"connection_type": p.config.Type,
+									"database":        p.config.BackendDatabase,
+								},
+							}
+
+							// Log approval request
+							audit.Log(p.auditLogPath, p.username, "postgres_approval_requested", p.config.Name, map[string]interface{}{
+								"connection_id": p.connectionID,
+								"query":         query,
+								"database":      p.config.BackendDatabase,
+								"timeout":       timeout.String(),
+							})
+
+							// Wait for approval with timeout
+							ctx, cancel := context.WithTimeout(context.Background(), timeout)
+							defer cancel()
+
+							approvalResp, err := p.approvalMgr.RequestApproval(ctx, approvalReq, timeout)
+							if err != nil {
+								// Log approval error
+								audit.Log(p.auditLogPath, p.username, "postgres_approval_error", p.config.Name, map[string]interface{}{
+									"connection_id": p.connectionID,
+									"query":         query,
+									"error":         err.Error(),
+								})
+								return true, query
+							}
+
+							// Check approval decision
+							if approvalResp.Decision != approval.DecisionApproved {
+								// Log rejection/timeout
+								audit.Log(p.auditLogPath, p.username, "postgres_approval_rejected", p.config.Name, map[string]interface{}{
+									"connection_id": p.connectionID,
+									"query":         query,
+									"decision":      approvalResp.Decision,
+									"reason":        approvalResp.Reason,
+									"rejected_by":   approvalResp.ApprovedBy,
+								})
+								return true, query
+							}
+
+							// Log approval success
+							audit.Log(p.auditLogPath, p.username, "postgres_approval_granted", p.config.Name, map[string]interface{}{
+								"connection_id": p.connectionID,
+								"query":         query,
+								"database":      p.config.BackendDatabase,
+								"approved_by":   approvalResp.ApprovedBy,
+							})
+						}
 					}
 				}
 

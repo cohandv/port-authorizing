@@ -110,13 +110,14 @@ func TestConnectionManager_CreateConnection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			connectionID, expiresAt, err := cm.CreateConnection(
-				tt.username,
-				tt.config,
-				tt.duration,
-				tt.whitelist,
-				tt.auditPath,
-			)
+		connectionID, expiresAt, err := cm.CreateConnection(
+			tt.username,
+			tt.config,
+			tt.duration,
+			tt.whitelist,
+			tt.auditPath,
+			nil, // no approval manager for tests
+		)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateConnection() error = %v, wantErr %v", err, tt.wantErr)
@@ -176,6 +177,7 @@ func TestConnectionManager_GetConnection(t *testing.T) {
 		10*time.Minute,
 		[]string{},
 		tmpFile.Name(),
+		nil, // no approval manager for tests
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -241,6 +243,7 @@ func TestConnectionManager_CloseConnection(t *testing.T) {
 		10*time.Minute,
 		[]string{},
 		tmpFile.Name(),
+		nil, // no approval manager for tests
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -299,6 +302,7 @@ func TestConnectionManager_GetActiveConnections(t *testing.T) {
 			10*time.Minute,
 			[]string{},
 			tmpFile.Name(),
+			nil, // no approval manager for tests
 		)
 		if err != nil {
 			t.Fatalf("Failed to create connection: %v", err)
@@ -342,6 +346,7 @@ func TestConnectionManager_CloseAll(t *testing.T) {
 			10*time.Minute,
 			[]string{},
 			tmpFile.Name(),
+			nil, // no approval manager for tests
 		)
 		if err != nil {
 			t.Fatalf("Failed to create connection: %v", err)
@@ -465,6 +470,7 @@ func TestConnectionManager_ExpiredConnections(t *testing.T) {
 		1*time.Millisecond, // Very short duration
 		[]string{},
 		tmpFile.Name(),
+		nil, // no approval manager for tests
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -499,7 +505,7 @@ func BenchmarkConnectionManager_CreateConnection(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cm.CreateConnection("testuser", connConfig, 10*time.Minute, whitelist, tmpFile.Name())
+		cm.CreateConnection("testuser", connConfig, 10*time.Minute, whitelist, tmpFile.Name(), nil)
 	}
 }
 
@@ -518,7 +524,7 @@ func BenchmarkConnectionManager_GetConnection(b *testing.B) {
 		Scheme: "http",
 	}
 
-	connectionID, _, _ := cm.CreateConnection("testuser", connConfig, 10*time.Minute, []string{}, tmpFile.Name())
+	connectionID, _, _ := cm.CreateConnection("testuser", connConfig, 10*time.Minute, []string{}, tmpFile.Name(), nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -1,10 +1,11 @@
 server:
   port: 8080
   max_connection_duration: 2h
+  base_url: "http://localhost:8080"  # Base URL for approval callbacks
 
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
-  token_expiry: 24h
+  token_expiry: 30m
 
   # Authentication providers
   providers:
@@ -160,3 +161,38 @@ logging:
   audit_log_path: "audit.log"
   log_level: "info"
 
+# Approval workflow configuration (disabled by default)
+approval:
+  enabled: true
+  patterns:
+     # HTTP DELETE requests
+     - pattern: "^DELETE /.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+
+     # PostgreSQL dangerous queries
+     - pattern: "^DELETE FROM.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+     - pattern: "^DROP TABLE.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+     - pattern: "^DROP DATABASE.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+     - pattern: "^TRUNCATE.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+     - pattern: "^UPDATE.*"
+       tags: ["env:test"]
+       tag_match: all
+       timeout_seconds: 10
+  webhook:
+    url: "http://localhost:9000/webhook"  # Mock approval server
+  slack:  # Not needed for mock server
+    webhook_url: "https://hooks.slack.com/services/"

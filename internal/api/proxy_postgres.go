@@ -82,6 +82,11 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		whitelist,
 	)
 
+	// Set approval manager if enabled
+	if s.approvalMgr != nil {
+		pgProxy.SetApprovalManager(s.approvalMgr)
+	}
+
 	// Handle the Postgres protocol connection
 	// This will authenticate the client with API credentials,
 	// log all queries, and forward to backend with backend credentials

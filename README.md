@@ -10,6 +10,12 @@
 
 Port Authorizing acts as a transparent proxy between clients and backend services (PostgreSQL, HTTP, TCP, etc.), providing centralized authentication, role-based authorization, protocol-specific filtering, and comprehensive audit logging.
 
+## Tools
+
+- **`port-authorizing`** - Main API server
+- **`port-authorizing-cli`** - CLI client for connecting through proxies
+- **`mock-approval-server`** - Testing tool for approval workflows (see `tools/mock-approval-server/`)
+
 ## Features
 
 - 🔐 **Multi-Provider Authentication** - Local users, OIDC (Keycloak), LDAP, SAML2
@@ -19,6 +25,7 @@ Port Authorizing acts as a transparent proxy between clients and backend service
 - 🌐 **Transparent Proxying** - Works with standard clients (psql, curl, etc.)
 - ⏱️ **Time-Limited Access** - Connections expire automatically
 - 📊 **Full Audit Logging** - All actions logged with user attribution
+- ✨ **Resilient Startup** - Server starts even if auth providers (OIDC/LDAP/SAML2) are temporarily unavailable
 
 ## Protocol Maturity
 

@@ -33,11 +33,11 @@ func TestNewManager(t *testing.T) {
 					Providers: []config.AuthProviderConfig{},
 				},
 			},
-			wantErr: true,
+			wantErr: false, // Now server starts even with no providers
 			wantLen: 0,
 		},
 		{
-			name: "create manager with OIDC provider (may fail if server not running)",
+			name: "create manager with OIDC provider (gracefully handles unreachable server)",
 			config: &config.Config{
 				Auth: config.AuthConfig{
 					Providers: []config.AuthProviderConfig{
@@ -57,8 +57,8 @@ func TestNewManager(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true, // Will fail if OIDC server not running (expected in unit tests)
-			wantLen: 0,
+			wantErr: false, // Now succeeds - provider is skipped if unreachable
+			wantLen: 0,     // No providers initialized (OIDC server not running)
 		},
 		{
 			name: "create manager with LDAP provider",
@@ -159,8 +159,8 @@ func TestNewManager(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true, // Will fail if OIDC server not running
-			wantLen: 0,
+			wantErr: false, // Now succeeds - OIDC skipped, local provider works
+			wantLen: 1,     // Only local provider (OIDC unreachable)
 		},
 		{
 			name: "unsupported provider type",
@@ -176,7 +176,7 @@ func TestNewManager(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false, // Now succeeds - unknown provider skipped with warning
 			wantLen: 0,
 		},
 	}

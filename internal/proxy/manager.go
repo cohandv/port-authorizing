@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/google/uuid"
 )
@@ -74,7 +75,7 @@ func NewConnectionManager(maxDuration time.Duration) *ConnectionManager {
 }
 
 // CreateConnection creates a new proxy connection
-func (cm *ConnectionManager) CreateConnection(username string, connConfig *config.ConnectionConfig, duration time.Duration, whitelist []string, auditLogPath string) (string, time.Time, error) {
+func (cm *ConnectionManager) CreateConnection(username string, connConfig *config.ConnectionConfig, duration time.Duration, whitelist []string, auditLogPath string, approvalMgr *approval.Manager) (string, time.Time, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -89,7 +90,14 @@ func (cm *ConnectionManager) CreateConnection(username string, connConfig *confi
 	if connConfig.Type != "postgres" {
 		if connConfig.Type == "http" || connConfig.Type == "https" {
 			// Create HTTP proxy with whitelist support
-			proxy = NewHTTPProxyWithWhitelist(connConfig, whitelist, auditLogPath, username, connectionID)
+			httpProxy := NewHTTPProxyWithWhitelist(connConfig, whitelist, auditLogPath, username, connectionID)
+
+			// Set approval manager if provided
+			if approvalMgr != nil {
+				httpProxy.SetApprovalManager(approvalMgr)
+			}
+
+			proxy = httpProxy
 		} else {
 			// Other protocols don't support whitelist yet
 			proxy, err = NewProtocol(connConfig)

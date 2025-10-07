@@ -1,3 +1,10 @@
+## [1.5.0](https://github.com/cohandv/port-authorizing/compare/v1.4.0...v1.5.0) (2025-10-07)
+
+
+### Features
+
+* Added approval process ([c616e1d](https://github.com/cohandv/port-authorizing/commit/c616e1d68e57fee86daff0c1dd7096506156f2ad))
+
 ## [1.4.0](https://github.com/cohandv/port-authorizing/compare/v1.3.0...v1.4.0) (2025-10-05)
 
 

@@ -1,3 +1,10 @@
+## [1.6.0](https://github.com/cohandv/port-authorizing/compare/v1.5.0...v1.6.0) (2025-10-08)
+
+
+### Features
+
+* added config contexts ([553dcee](https://github.com/cohandv/port-authorizing/commit/553dcee79b09fb1333420397d024624730071a71))
+
 ## [1.5.0](https://github.com/cohandv/port-authorizing/compare/v1.4.0...v1.5.0) (2025-10-07)
 
 

@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/jackc/pgproto3/v2 v2.3.3
+	github.com/pganalyze/pg_query_go/v5 v5.1.0
 	github.com/spf13/cobra v1.10.1
 	github.com/xdg-go/scram v1.1.2
 	golang.org/x/oauth2 v0.31.0
@@ -27,4 +28,5 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 )

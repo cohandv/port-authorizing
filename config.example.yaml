@@ -221,6 +221,15 @@ policies:
       - "^POST /api/.*"  # Allow POST to API endpoints
       - "^PUT /api/users/[0-9]+/profile$"  # Allow updating user profiles
       - "^PATCH /api/.*"  # Allow PATCH requests
+    # Fine-grained table-level permissions (PostgreSQL only)
+    # This provides semantic SQL analysis, preventing injection and enforcing table-level access
+    database_permissions:
+      - operations: [SELECT, EXPLAIN]
+        tables: ["*"]  # Allow SELECT on all tables
+      - operations: [INSERT]
+        tables: [logs, events, audit_trail]  # Only allow INSERT on specific tables
+      - operations: [UPDATE]
+        tables: [users, sessions]  # Only allow UPDATE on user/session tables
     metadata:
       description: "Developers have limited access to staging (SELECT, specific INSERTs for DBs; GET, POST, PUT, PATCH for APIs)"
 
@@ -239,8 +248,37 @@ policies:
       - "^GET .*"  # Allow all GET requests
       - "^HEAD .*"  # Allow HEAD requests
       - "^OPTIONS .*"  # Allow OPTIONS requests (CORS preflight)
+    # Table-level permissions - read-only with exclusions
+    database_permissions:
+      - operations: [SELECT, EXPLAIN]
+        tables: ["*"]  # Allow SELECT on all tables
+      - operations: [SELECT]
+        tables: ["!sensitive_*", "!pii_*"]  # Explicitly deny sensitive tables (if implemented)
     metadata:
       description: "Developers have read-only access to production (SELECT/EXPLAIN for DBs; GET/HEAD/OPTIONS for APIs)"
+
+  # Admin policy for production - write access with strict table controls
+  - name: admin-prod-controlled
+    roles:
+      - admin
+    tags:
+      - env:production
+    tag_match: any
+    whitelist:
+      - ".*"  # Regex whitelist allows everything (but table permissions provide fine-grained control)
+    # Fine-grained table-level permissions prevent dangerous operations
+    database_permissions:
+      - operations: [SELECT, EXPLAIN]
+        tables: ["*"]  # Read access to all tables
+      - operations: [INSERT]
+        tables: [logs_*, audit_*, events_*]  # Only allow INSERT on logging/audit tables
+      - operations: [UPDATE]
+        tables: [users, sessions, config]  # Limited UPDATE access
+      - operations: [DELETE]
+        tables: [sessions, temp_*]  # DELETE only on temporary/session tables
+      # NOTE: DROP, TRUNCATE, ALTER not in any permission = implicitly denied
+    metadata:
+      description: "Admins have controlled write access in production - no DROP/TRUNCATE/ALTER allowed via table permissions"
 
   # QA policy - full access to test, read-only to staging
   - name: qa-test-full

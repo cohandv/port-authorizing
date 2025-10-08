@@ -195,4 +195,4 @@ approval:
   webhook:
     url: "http://localhost:9000/webhook"  # Mock approval server
   slack:  # Not needed for mock server
-    webhook_url: "https://hooks.slack.com/services/"
+    webhook_url: "https://hooks.slack.com/services"

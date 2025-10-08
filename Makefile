@@ -131,6 +131,25 @@ test-coverage:
 	@echo "✓ Coverage report generated: coverage.html"
 	@go tool cover -func=coverage.out | tail -1
 
+# Docker test targets (for macOS compatibility with pg_query_go)
+docker-test:
+	@echo "Running tests in Docker (Alpine Linux)..."
+	@docker run --rm -v $(PWD):/app -w /app golang:1.24-alpine sh -c '\
+		apk add --no-cache build-base git make && \
+		go test ./internal/... -cover'
+
+docker-test-security:
+	@echo "Running SQL analyzer tests in Docker..."
+	@docker run --rm -v $(PWD):/app -w /app golang:1.24-alpine sh -c '\
+		apk add --no-cache build-base git && \
+		go test ./internal/security -v -run TestSQLAnalyzer'
+
+docker-test-verbose:
+	@echo "Running verbose tests in Docker..."
+	@docker run --rm -v $(PWD):/app -w /app golang:1.24-alpine sh -c '\
+		apk add --no-cache build-base git make && \
+		go test ./internal/... -v -cover'
+
 # Run end-to-end tests with Docker
 test-e2e:
 	@echo "Running end-to-end tests with Docker..."

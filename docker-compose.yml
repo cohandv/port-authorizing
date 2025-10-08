@@ -91,9 +91,48 @@ services:
     depends_on:
       - openldap
 
+  # Port Authorizing API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: dev
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    container_name: port-auth-api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.docker.yaml:/app/config.yaml:ro  # Mount Docker-specific config
+      - ./logs:/app/logs  # Persist audit logs
+      - ./data:/app/data  # Persist data (tokens, etc.)
+    environment:
+      - TZ=UTC
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nginx:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - default
+    command: ["server", "--config", "/app/config.yaml"]
+
 volumes:
   postgres_data:
   keycloak_data:
   ldap_data:
   ldap_config:
+
+networks:
+  default:
+    name: port-auth-network
 

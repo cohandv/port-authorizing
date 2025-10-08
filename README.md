@@ -21,18 +21,20 @@ Port Authorizing acts as a transparent proxy between clients and backend service
 - 🔐 **Multi-Provider Authentication** - Local users, OIDC (Keycloak), LDAP, SAML2
 - 🛡️ **Role-Based Access Control** - Tag-based policies with different access per role
 - 📝 **Protocol-Specific Filtering** - SQL query whitelisting for PostgreSQL, request filtering for HTTP
+- 🔬 **SQL Semantic Analysis** - Table-level permissions with PostgreSQL parser (prevents injection)
 - 🔒 **Credential Hiding** - Users never see backend credentials
 - 🌐 **Transparent Proxying** - Works with standard clients (psql, curl, etc.)
 - ⏱️ **Time-Limited Access** - Connections expire automatically
 - 📊 **Full Audit Logging** - All actions logged with user attribution
+- ✅ **Command Approval Workflow** - Human-in-the-loop for dangerous operations (Webhook + Slack)
 - ✨ **Resilient Startup** - Server starts even if auth providers (OIDC/LDAP/SAML2) are temporarily unavailable
 
 ## Protocol Maturity
 
 | Protocol | Status | Features | Notes |
 |----------|--------|----------|-------|
-| PostgreSQL | ✅ **Mature** | Authentication, query whitelisting, audit logging | Fully protocol-aware with username validation |
-| HTTP/HTTPS | ✅ **Mature** | Transparent proxying, authentication, audit logging | Full request/response handling |
+| PostgreSQL | ✅ **Mature** | Authentication, SQL parsing, table-level permissions, query whitelisting, approval workflow, audit logging | Fully protocol-aware with semantic analysis |
+| HTTP/HTTPS | ✅ **Mature** | Transparent proxying, request whitelisting, CORS, approval workflow, audit logging | Full request/response handling |
 | TCP | 🚧 **Beta** | Basic proxying, authentication | Limited protocol awareness, suitable for simple services |
 
 ## Quick Start

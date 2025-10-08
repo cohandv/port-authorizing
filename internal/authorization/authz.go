@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"github.com/davidcohan/port-authorizing/internal/security"
 )
 
 // Authorizer handles authorization decisions
@@ -93,6 +94,44 @@ func (a *Authorizer) GetWhitelistForConnection(roles []string, connectionName st
 	}
 
 	return whitelist
+}
+
+// GetDatabasePermissionsForConnection returns table-level database permissions for a user's roles on a connection
+func (a *Authorizer) GetDatabasePermissionsForConnection(roles []string, connectionName string) []security.TablePermission {
+	conn, exists := a.connections[connectionName]
+	if !exists {
+		return nil
+	}
+
+	permissions := []security.TablePermission{}
+
+	for _, role := range roles {
+		policies, exists := a.policies[role]
+		if !exists {
+			continue
+		}
+
+		for _, policy := range policies {
+			if a.policyMatchesConnection(policy, conn) {
+				// Convert config permissions to security.TablePermission
+				for _, dbPerm := range policy.DatabasePermissions {
+					// Convert string operations to SQLOperation
+					operations := make([]security.SQLOperation, 0, len(dbPerm.Operations))
+					for _, op := range dbPerm.Operations {
+						operations = append(operations, security.SQLOperation(strings.ToUpper(op)))
+					}
+
+					permissions = append(permissions, security.TablePermission{
+						Operations: operations,
+						Tables:     dbPerm.Tables,
+						Columns:    dbPerm.Columns,
+					})
+				}
+			}
+		}
+	}
+
+	return permissions
 }
 
 // roleCanAccessConnection checks if a specific role can access a connection

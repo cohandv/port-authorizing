@@ -36,15 +36,19 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get whitelist for this user's roles and connection
+	// Get whitelist for this user's roles and connection (legacy/additional patterns)
 	whitelist := s.authz.GetWhitelistForConnection(roles, conn.Config.Name)
+
+	// Get fine-grained table-level permissions
+	tablePermissions := s.authz.GetDatabasePermissionsForConnection(roles, conn.Config.Name)
 
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect", conn.Config.Name, map[string]interface{}{
-		"connection_id":   connectionID,
-		"method":          r.Method,
-		"roles":           roles,
-		"whitelist_rules": len(whitelist),
+		"connection_id":     connectionID,
+		"method":            r.Method,
+		"roles":             roles,
+		"whitelist_rules":   len(whitelist),
+		"table_permissions": len(tablePermissions),
 	})
 
 	// Hijack HTTP connection to get raw TCP socket
@@ -81,6 +85,11 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		s.config,
 		whitelist,
 	)
+
+	// Set table-level permissions if configured
+	if len(tablePermissions) > 0 {
+		pgProxy.SetTablePermissions(tablePermissions)
+	}
 
 	// Set approval manager if enabled
 	if s.approvalMgr != nil {

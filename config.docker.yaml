@@ -1,0 +1,164 @@
+# Docker Compose Configuration
+# Uses internal Docker network service names
+# Mounted as volume in docker-compose.yml
+
+server:
+  port: 8080
+  max_connection_duration: 24h
+  base_url: http://localhost:8080  # For Slack approval callbacks
+
+auth:
+  jwt_secret: docker-dev-secret-change-in-production
+  token_expiry: 24h
+
+  providers:
+    # Local users for quick testing
+    - name: local
+      type: local
+      enabled: true
+      config: {}
+
+    # OIDC via Keycloak (internal Docker network)
+    - name: keycloak
+      type: oidc
+      enabled: true
+      config:
+        issuer: http://keycloak:8180/realms/portauth  # Docker internal!
+        client_id: port-authorizing
+        client_secret: your-keycloak-client-secret
+        redirect_url: http://localhost:8080/auth/oidc/callback
+
+    # LDAP (internal Docker network)
+    - name: ldap
+      type: ldap
+      enabled: true
+      config:
+        url: ldap://openldap:389  # Docker internal!
+        bind_dn: cn=admin,dc=portauth,dc=local
+        bind_password: adminpass
+        user_base_dn: ou=users,dc=portauth,dc=local
+        user_filter: (uid=%s)
+        group_base_dn: ou=groups,dc=portauth,dc=local
+
+  # Local users (for testing without external auth)
+  users:
+    - username: admin
+      password: admin123
+      roles:
+        - admin
+    - username: developer
+      password: dev123
+      roles:
+        - developer
+
+# Available connections (using Docker internal service names)
+connections:
+  # PostgreSQL via Docker network
+  - name: postgres-test
+    type: postgres
+    host: postgres  # Docker service name!
+    port: 5432
+    backend_username: testuser
+    backend_password: testpass
+    backend_database: testdb
+    tags:
+      - env:test
+      - team:backend
+      - protocol:postgres
+
+  # Nginx via Docker network
+  - name: nginx-server
+    type: http
+    host: nginx  # Docker service name!
+    port: 80
+    scheme: http
+    tags:
+      - env:test
+      - team:frontend
+      - protocol:http
+
+# Authorization policies
+policies:
+  # Admin - full access
+  - name: admin-full-access
+    roles:
+      - admin
+    tags:
+      - env:test
+    tag_match: any
+    whitelist:
+      - ".*"  # Allow all
+    database_permissions:
+      - operations: [SELECT, INSERT, UPDATE, DELETE, EXPLAIN]
+        tables: ["*"]
+    metadata:
+      description: "Admins have full access in test environment"
+
+  # Developer - full access to test
+  - name: developer-test-full
+    roles:
+      - developer
+    tags:
+      - env:test
+    tag_match: any
+    whitelist:
+      - ".*"  # Allow all in test
+    database_permissions:
+      - operations: [SELECT, INSERT, UPDATE, DELETE, EXPLAIN]
+        tables: ["*"]
+    metadata:
+      description: "Developers have full access to test environment"
+
+  # Developer - read-only with table restrictions (example)
+  - name: developer-readonly-restricted
+    roles:
+      - developer
+    tags:
+      - team:backend
+    tag_match: all
+    whitelist:
+      - "^SELECT.*"
+      - "^EXPLAIN.*"
+    database_permissions:
+      - operations: [SELECT, EXPLAIN]
+        tables: [users, orders, products]  # Specific tables only
+    metadata:
+      description: "Read-only access to specific tables"
+
+# Security settings
+security:
+  enable_llm_analysis: false  # Disable for Docker testing
+  llm_provider: ""
+  llm_api_key: ""
+
+# Logging
+logging:
+  audit_log_path: /app/logs/audit.log
+  log_level: info
+
+# Approval workflow (optional - for testing)
+approval:
+  enabled: false  # Set to true to test approval workflow
+  patterns:
+    # Dangerous PostgreSQL operations
+    - pattern: "(?i)^DELETE FROM.*"
+      tags: ["env:test"]
+      tag_match: all
+      timeout_seconds: 30
+    - pattern: "(?i)^DROP TABLE.*"
+      tags: ["env:test"]
+      tag_match: all
+      timeout_seconds: 30
+    - pattern: "(?i)^TRUNCATE.*"
+      tags: ["env:test"]
+      tag_match: all
+      timeout_seconds: 30
+
+  # Webhook approval (use mock server)
+  webhook:
+    url: http://host.docker.internal:9000/webhook  # Host machine mock server
+
+  # Slack approval (optional)
+  # slack:
+  #   webhook_url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+

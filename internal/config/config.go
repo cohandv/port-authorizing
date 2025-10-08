@@ -74,12 +74,21 @@ type ConnectionConfig struct {
 
 // RolePolicy defines access policies for roles
 type RolePolicy struct {
-	Name      string            `yaml:"name"`                // Policy name
-	Roles     []string          `yaml:"roles"`               // Which roles this policy applies to
-	Tags      []string          `yaml:"tags"`                // Connection tags this policy applies to (e.g., "env:dev", "team:backend")
-	TagMatch  string            `yaml:"tag_match,omitempty"` // "all" (default) or "any"
-	Whitelist []string          `yaml:"whitelist,omitempty"` // Allowed patterns for matched connections
-	Metadata  map[string]string `yaml:"metadata,omitempty"`  // Additional metadata
+	Name                string                     `yaml:"name"`                           // Policy name
+	Roles               []string                   `yaml:"roles"`                          // Which roles this policy applies to
+	Tags                []string                   `yaml:"tags"`                           // Connection tags this policy applies to (e.g., "env:dev", "team:backend")
+	TagMatch            string                     `yaml:"tag_match,omitempty"`            // "all" (default) or "any"
+	Whitelist           []string                   `yaml:"whitelist,omitempty"`            // Regex patterns (legacy, still supported)
+	DatabasePermissions []DatabasePermissionConfig `yaml:"database_permissions,omitempty"` // Fine-grained table-level permissions
+	Metadata            map[string]string          `yaml:"metadata,omitempty"`             // Additional metadata
+}
+
+// DatabasePermissionConfig defines fine-grained database permissions
+type DatabasePermissionConfig struct {
+	Operations   []string `yaml:"operations"`              // Allowed SQL operations: SELECT, INSERT, UPDATE, DELETE, etc.
+	Tables       []string `yaml:"tables"`                  // Table names or patterns (*, users, logs_*, *_temp)
+	Columns      []string `yaml:"columns,omitempty"`       // Column restrictions (optional, ["*"] = all)
+	RequireWhere bool     `yaml:"require_where,omitempty"` // Require WHERE clause (prevent full table operations)
 }
 
 // SecurityConfig contains security settings

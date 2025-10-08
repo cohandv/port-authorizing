@@ -4,9 +4,10 @@ FROM golang:1.24-alpine3.21 AS builder
 WORKDIR /app
 
 # Install build dependencies and update all packages to latest versions
+# build-base is required for pg_query_go (C compiler, make, etc.)
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache git make
+    apk add --no-cache git make build-base
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -21,7 +22,8 @@ ARG BUILD_TIME=unknown
 ARG GIT_COMMIT=unknown
 
 # Build the unified binary
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# CGO_ENABLED=1 is required for pg_query_go (PostgreSQL parser)
+RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME} -X main.GitCommit=${GIT_COMMIT}" \
     -o /app/port-authorizing \
     ./cmd/port-authorizing

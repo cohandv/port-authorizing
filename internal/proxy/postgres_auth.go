@@ -18,31 +18,41 @@ import (
 	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"github.com/davidcohan/port-authorizing/internal/security"
 	"github.com/xdg-go/scram"
 )
 
 // PostgresAuthProxy handles postgres with credential substitution
 type PostgresAuthProxy struct {
-	config       *config.ConnectionConfig
-	auditLogPath string
-	username     string
-	connectionID string
-	apiConfig    *config.Config
-	whitelist    []string
-	approvalMgr  *approval.Manager
+	config           *config.ConnectionConfig
+	auditLogPath     string
+	username         string
+	connectionID     string
+	apiConfig        *config.Config
+	whitelist        []string
+	approvalMgr      *approval.Manager
+	tablePermissions []security.TablePermission // Fine-grained table-level permissions
+	sqlAnalyzer      *security.SQLAnalyzer      // SQL parser for semantic analysis
 }
 
 // NewPostgresAuthProxy creates a postgres proxy with auth handling
 func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, connectionID string, apiConfig *config.Config, whitelist []string) *PostgresAuthProxy {
 	return &PostgresAuthProxy{
-		config:       cfg,
-		auditLogPath: auditLogPath,
-		username:     username,
-		connectionID: connectionID,
-		apiConfig:    apiConfig,
-		whitelist:    whitelist,
-		approvalMgr:  nil, // Will be set later if approvals are enabled
+		config:           cfg,
+		auditLogPath:     auditLogPath,
+		username:         username,
+		connectionID:     connectionID,
+		apiConfig:        apiConfig,
+		whitelist:        whitelist,
+		approvalMgr:      nil, // Will be set later if approvals are enabled
+		tablePermissions: nil, // Will be set later if table permissions are configured
+		sqlAnalyzer:      security.NewSQLAnalyzer(),
 	}
+}
+
+// SetTablePermissions sets fine-grained table-level permissions for this proxy
+func (p *PostgresAuthProxy) SetTablePermissions(permissions []security.TablePermission) {
+	p.tablePermissions = permissions
 }
 
 // SetApprovalManager sets the approval manager for this proxy
@@ -648,19 +658,66 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 				query := string(bytes.TrimRight(queryBytes, "\x00"))
 
 				if query != "" {
-					// Check whitelist first
+					// DEFENSE IN DEPTH: Multiple layers of validation
+
+					// Layer 1: SQL Semantic Analysis (if table permissions configured)
+					if len(p.tablePermissions) > 0 {
+						analysis := p.sqlAnalyzer.AnalyzeQuery(query)
+
+						// Check if query parsed successfully
+						if !analysis.Valid {
+							// SQL parse error - likely malformed or injection attempt
+							audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
+								"connection_id": p.connectionID,
+								"query":         query,
+								"reason":        "sql_parse_error",
+								"error":         analysis.Error.Error(),
+							})
+							return true, query
+						}
+
+						// Check table-level permissions
+						allowed, reason := p.sqlAnalyzer.CheckTablePermissions(analysis, p.tablePermissions)
+						if !allowed {
+							// Table permission violation
+							audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
+								"connection_id": p.connectionID,
+								"query":         query,
+								"reason":        "table_permission_violation",
+								"details":       reason,
+								"operations":    analysis.Operations,
+								"tables":        analysis.Tables,
+							})
+							return true, query
+						}
+
+						// Log successful semantic validation
+						audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
+							"connection_id":     p.connectionID,
+							"query":             query,
+							"database":          p.config.BackendDatabase,
+							"sql_analysis":      "passed",
+							"operations":        analysis.Operations,
+							"tables":            analysis.Tables,
+							"table_permissions": true,
+						})
+					}
+
+					// Layer 2: Regex Whitelist (legacy, additional patterns)
 					allowed := p.isQueryAllowed(query)
 
 					// Log the query with whitelist result
-					audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
-						"connection_id": p.connectionID,
-						"query":         query,
-						"database":      p.config.BackendDatabase,
-						"allowed":       allowed,
-						"whitelist":     len(p.whitelist) > 0,
-					})
+					if len(p.whitelist) > 0 {
+						audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
+							"connection_id": p.connectionID,
+							"query":         query,
+							"database":      p.config.BackendDatabase,
+							"allowed":       allowed,
+							"whitelist":     true,
+						})
+					}
 
-					if !allowed {
+					if !allowed && len(p.whitelist) > 0 {
 						// Log blocked query
 						audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
 							"connection_id": p.connectionID,

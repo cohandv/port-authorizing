@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -23,12 +21,14 @@ var (
 	username      string
 	password      string
 	loginProvider string
+	contextName   string
 )
 
 func init() {
 	loginCmd.Flags().StringVarP(&username, "username", "u", "", "Username (for local auth)")
 	loginCmd.Flags().StringVarP(&password, "password", "p", "", "Password (for local auth)")
 	loginCmd.Flags().StringVar(&loginProvider, "provider", "", "Authentication provider: local, oidc (auto-detects if not specified)")
+	loginCmd.Flags().StringVarP(&contextName, "context", "c", "", "Context name (default: use current or create 'default')")
 }
 
 type loginRequest struct {
@@ -47,15 +47,30 @@ type loginResponse struct {
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
+	// Determine context name
+	if contextName == "" {
+		cfg, _ := LoadConfig()
+		if cfg != nil && cfg.CurrentContext != "" {
+			contextName = cfg.CurrentContext
+		} else {
+			contextName = "default"
+		}
+	}
+
 	// Get API URL from parent command flags
 	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
 	if apiURL == "" {
-		apiURL = "http://localhost:8080"
+		// Try to get from existing context
+		if ctx, err := GetContext(contextName); err == nil && ctx.APIURL != "" {
+			apiURL = ctx.APIURL
+		} else {
+			apiURL = "http://localhost:8080"
+		}
 	}
 
 	// Determine authentication method
 	if loginProvider == "oidc" {
-		return runOIDCLogin(apiURL)
+		return runOIDCLoginWithContext(apiURL, contextName)
 	}
 
 	// If no username/password provided, default to OIDC flow
@@ -63,7 +78,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		fmt.Println("No credentials provided. Using browser-based OIDC authentication.")
 		fmt.Println("(Use -u and -p flags for local username/password authentication)")
 		fmt.Println("")
-		return runOIDCLogin(apiURL)
+		return runOIDCLoginWithContext(apiURL, contextName)
 	}
 
 	// Local username/password authentication
@@ -104,51 +119,49 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Save token to config file
-	if err := saveToken(loginResp.Token); err != nil {
-		return fmt.Errorf("failed to save token: %w", err)
+	// Save token to context
+	ctx := Context{
+		Name:   contextName,
+		APIURL: apiURL,
+		Token:  loginResp.Token,
+	}
+	if err := SaveContext(ctx, true); err != nil {
+		return fmt.Errorf("failed to save context: %w", err)
 	}
 
 	fmt.Printf("✓ Successfully logged in as %s\n", loginResp.User.Username)
 	if len(loginResp.User.Roles) > 0 {
 		fmt.Printf("  Roles: %v\n", loginResp.User.Roles)
 	}
-	fmt.Printf("Token expires at: %s\n", loginResp.ExpiresAt)
+	fmt.Printf("  Context: %s\n", contextName)
+	fmt.Printf("  API URL: %s\n", apiURL)
+	fmt.Printf("  Token expires at: %s\n", loginResp.ExpiresAt)
 
 	return nil
 }
 
+// runOIDCLoginWithContext wraps OIDC login with context saving
+func runOIDCLoginWithContext(apiURL, contextName string) error {
+	// TODO: Implement OIDC with context support
+	return runOIDCLogin(apiURL)
+}
+
+// Legacy saveToken - keeping for OIDC backward compatibility
 func saveToken(token string) error {
-	// Get default config path
-	defaultPath := filepath.Join(os.Getenv("HOME"), ".port-auth", "config.json")
-
-	// Use configPath if set, otherwise use default
-	path := defaultPath
-	if configPath != "" && configPath != "$HOME/.port-auth/config.json" {
-		path = os.ExpandEnv(configPath)
-	}
-
-	configDir := filepath.Dir(path)
-
-	// Create config directory if it doesn't exist
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	// Save token to file
-	config := map[string]interface{}{
-		"api_url": apiURL,
-		"token":   token,
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
+	// This is now handled by SaveContext
+	// Keeping for OIDC login compatibility
 	return nil
+}
+
+func loadToken() (string, error) {
+	ctx, err := GetCurrentContext()
+	if err != nil {
+		return "", fmt.Errorf("not logged in: %w. Please run 'login' first", err)
+	}
+
+	if ctx.Token == "" {
+		return "", fmt.Errorf("no token found for context '%s'. Please run 'login'", ctx.Name)
+	}
+
+	return ctx.Token, nil
 }

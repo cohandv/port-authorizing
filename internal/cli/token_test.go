@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Test saveToken and loadToken
+// Test context save and load
 func TestSaveAndLoadToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -20,9 +20,16 @@ func TestSaveAndLoadToken(t *testing.T) {
 
 	token := "test.token.here"
 
-	err := saveToken(token)
+	// Create a context with token
+	ctx := Context{
+		Name:   "test",
+		APIURL: "http://localhost:8080",
+		Token:  token,
+	}
+
+	err := SaveContext(ctx, true)
 	if err != nil {
-		t.Fatalf("saveToken() error = %v", err)
+		t.Fatalf("SaveContext() error = %v", err)
 	}
 
 	loadedToken, err := loadToken()
@@ -207,9 +214,15 @@ func TestSaveToken_InvalidPath(t *testing.T) {
 	os.Setenv("HOME", tmpFile)
 	defer os.Setenv("HOME", oldHome)
 
-	err := saveToken("test-token")
+	ctx := Context{
+		Name:   "test",
+		APIURL: "http://localhost:8080",
+		Token:  "test-token",
+	}
+
+	err := SaveContext(ctx, true)
 	if err == nil {
-		t.Error("saveToken() should fail when HOME is not a valid directory")
+		t.Error("SaveContext() should fail when HOME is not a valid directory")
 	}
 }
 
@@ -226,9 +239,9 @@ func TestLoadToken_InvalidJSON(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", oldHome)
 
-	_, err := loadToken()
+	_, err := LoadConfig()
 	if err == nil {
-		t.Error("loadToken() should fail with invalid JSON")
+		t.Error("LoadConfig() should fail with invalid JSON")
 	}
 }
 
@@ -238,8 +251,8 @@ func TestLoadToken_NoToken(t *testing.T) {
 	os.MkdirAll(configDir, 0755)
 	configFile := filepath.Join(configDir, "config.json")
 
-	// Write JSON without token field
-	os.WriteFile(configFile, []byte(`{"other":"field"}`), 0600)
+	// Write config with context but no token
+	os.WriteFile(configFile, []byte(`{"contexts":[{"name":"test","api_url":"http://localhost:8080","token":""}],"current_context":"test"}`), 0600)
 
 	oldHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpDir)
@@ -247,7 +260,7 @@ func TestLoadToken_NoToken(t *testing.T) {
 
 	_, err := loadToken()
 	if err == nil {
-		t.Error("loadToken() should fail when token field is missing")
+		t.Error("loadToken() should fail when token is empty")
 	}
 }
 
@@ -257,11 +270,15 @@ func BenchmarkSaveToken(b *testing.B) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", oldHome)
 
-	token := "test.token.here"
+	ctx := Context{
+		Name:   "test",
+		APIURL: "http://localhost:8080",
+		Token:  "test.token.here",
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		saveToken(token)
+		SaveContext(ctx, true)
 	}
 }
 
@@ -271,7 +288,12 @@ func BenchmarkLoadToken(b *testing.B) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", oldHome)
 
-	saveToken("test.token.here")
+	ctx := Context{
+		Name:   "test",
+		APIURL: "http://localhost:8080",
+		Token:  "test.token.here",
+	}
+	SaveContext(ctx, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

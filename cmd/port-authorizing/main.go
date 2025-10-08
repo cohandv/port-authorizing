@@ -33,10 +33,11 @@ with centralized authentication, role-based authorization, and query whitelistin
 	}
 	serverCmd.Flags().String("config", "config.yaml", "Path to configuration file")
 
-	// Client commands (login, list, connect)
+	// Client commands (login, list, connect, context)
 	loginCmd := cli.NewLoginCmd()
 	listCmd := cli.NewListCmd()
 	connectCmd := cli.NewConnectCmd()
+	contextCmd := cli.NewContextCmd()
 
 	// Version command
 	versionCmd := &cobra.Command{
@@ -54,6 +55,7 @@ with centralized authentication, role-based authorization, and query whitelistin
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(connectCmd)
+	rootCmd.AddCommand(contextCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	// Global flags

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -43,18 +42,21 @@ type connectResponse struct {
 }
 
 func runConnect(cmd *cobra.Command, args []string) error {
-	// Get API URL from parent command flags
-	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
+	// Get current context
+	ctx, err := GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("not logged in: %w. Please run 'login' first", err)
+	}
+
+	apiURL := ctx.APIURL
+	token := ctx.Token
+
+	// Allow override from command line flag
+	if flagURL, _ := cmd.Root().PersistentFlags().GetString("api-url"); flagURL != "" {
+		apiURL = flagURL
 	}
 
 	connectionName := args[0]
-
-	token, err := loadToken()
-	if err != nil {
-		return fmt.Errorf("not logged in. Please run 'login' first: %w", err)
-	}
 
 	// Validate token is still valid
 	if err := validateToken(token); err != nil {
@@ -244,34 +246,6 @@ func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL strin
 
 	// Wait for one direction to finish
 	<-done
-}
-
-func loadToken() (string, error) {
-	// Get default config path
-	defaultPath := filepath.Join(os.Getenv("HOME"), ".port-auth", "config.json")
-
-	// Use configPath if set, otherwise use default
-	path := defaultPath
-	if configPath != "" && configPath != "$HOME/.port-auth/config.json" {
-		path = os.ExpandEnv(configPath)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(data, &config); err != nil {
-		return "", err
-	}
-
-	token, ok := config["token"].(string)
-	if !ok {
-		return "", fmt.Errorf("token not found in config")
-	}
-
-	return token, nil
 }
 
 // validateToken checks if JWT token is still valid

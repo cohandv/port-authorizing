@@ -153,8 +153,13 @@ func TestRunList_Success(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", oldHome)
 
-	// Save token first
-	saveToken("valid-token")
+	// Create a context with token
+	ctx := Context{
+		Name:   "test",
+		APIURL: server.URL,
+		Token:  "valid-token",
+	}
+	SaveContext(ctx, true)
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -214,7 +219,13 @@ func TestRunList_Unauthorized(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", oldHome)
 
-	saveToken("invalid-token")
+	// Create context with invalid token
+	ctx := Context{
+		Name:   "test",
+		APIURL: server.URL,
+		Token:  "invalid-token",
+	}
+	SaveContext(ctx, true)
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")

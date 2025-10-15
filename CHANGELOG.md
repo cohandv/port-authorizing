@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/cohandv/port-authorizing/compare/v1.7.0...v1.7.1) (2025-10-15)
+
+
+### Bug Fixes
+
+* missing using context for list and connect commands ([c817b50](https://github.com/cohandv/port-authorizing/commit/c817b5091ed795632ccd8f717bbb1873c6449e84))
+
 ## [1.7.0](https://github.com/cohandv/port-authorizing/compare/v1.6.0...v1.7.0) (2025-10-15)
 
 

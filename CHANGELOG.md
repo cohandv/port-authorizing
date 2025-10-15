@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/cohandv/port-authorizing/compare/v1.7.1...v1.7.2) (2025-10-15)
+
+
+### Bug Fixes
+
+* updated refs to github repo ([362dd72](https://github.com/cohandv/port-authorizing/commit/362dd72e635b0c8146bd0926e9fe30f1c32bc160))
+
 ## [1.7.1](https://github.com/cohandv/port-authorizing/compare/v1.7.0...v1.7.1) (2025-10-15)
 
 

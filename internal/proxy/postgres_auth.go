@@ -640,12 +640,32 @@ func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries boo
 // Returns (blocked, query) where blocked=true if query should be blocked
 func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 	for i := 0; i < len(data); i++ {
-		if data[i] == 'Q' && i+5 < len(data) {
+		// Check for both Simple Query ('Q') and Extended Query Parse ('P') messages
+		msgType := data[i]
+		if (msgType == 'Q' || msgType == 'P') && i+5 < len(data) {
 			length := int(binary.BigEndian.Uint32(data[i+1 : i+5]))
 
 			if i+1+length <= len(data) && length > 4 {
-				queryBytes := data[i+5 : i+1+length]
-				query := string(bytes.TrimRight(queryBytes, "\x00"))
+				var query string
+				
+				if msgType == 'Q' {
+					// Simple Query: query string starts at i+5
+					queryBytes := data[i+5 : i+1+length]
+					query = string(bytes.TrimRight(queryBytes, "\x00"))
+				} else if msgType == 'P' {
+					// Parse message: format is statement_name (null-terminated) + query (null-terminated)
+					// Skip statement name to get to query
+					nameStart := i + 5
+					nameEnd := nameStart
+					for nameEnd < i+1+length && data[nameEnd] != 0 {
+						nameEnd++
+					}
+					if nameEnd < i+1+length {
+						nameEnd++ // Skip null terminator
+						queryBytes := data[nameEnd : i+1+length]
+						query = string(bytes.TrimRight(queryBytes, "\x00"))
+					}
+				}
 
 				if query != "" {
 					// Check whitelist first
@@ -658,6 +678,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 						"database":      p.config.BackendDatabase,
 						"allowed":       allowed,
 						"whitelist":     len(p.whitelist) > 0,
+						"message_type":  string(msgType),
 					})
 
 					if !allowed {

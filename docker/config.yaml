@@ -1,7 +1,7 @@
 server:
   port: 8080
   max_connection_duration: 2h
-  base_url: "http://localhost:8080"  # Base URL for approval callbacks
+  base_url: "http://api:8080"  # Use docker service name
 
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
@@ -9,32 +9,19 @@ auth:
 
   # Authentication providers
   providers:
-    # Uncomment to enable Keycloak OIDC
+    # Keycloak OIDC (using docker service name)
     - name: keycloak
       type: oidc
       enabled: true
       config:
-        issuer: "http://localhost:8180/realms/portauth"
+        issuer: "http://keycloak:8180/realms/portauth"
         client_id: "port-authorizing"
         client_secret: "your-client-secret-change-in-production"
-        redirect_url: "http://localhost:8080/api/auth/oidc/callback"
+        redirect_url: "http://localhost:8080/api/auth/oidc/callback"  # External URL
         roles_claim: "roles"
         username_claim: "preferred_username"
 
-    # Uncomment to enable LDAP
-    # - name: ldap
-    #   type: ldap
-    #   enabled: true
-    #   config:
-    #     url: "localhost:389"
-    #     bind_dn: "cn=admin,dc=portauth,dc=local"
-    #     bind_password: "adminpass"
-    #     user_base_dn: "ou=users,dc=portauth,dc=local"
-    #     user_filter: "(uid=%s)"
-    #     group_base_dn: "ou=groups,dc=portauth,dc=local"
-    #     group_filter: "(member=%s)"
-
-  # Local users (legacy support)
+  # Local users (for testing)
   users:
     - username: admin
       password: admin123
@@ -46,10 +33,10 @@ auth:
         - developer
 
 connections:
-  # PostgreSQL test database (Docker)
+  # PostgreSQL test database (Docker service name)
   - name: postgres-test
     type: postgres
-    host: localhost
+    host: postgres  # Docker service name
     port: 5432
     duration: 3m
     tags:
@@ -62,11 +49,11 @@ connections:
       description: "Test PostgreSQL database (Docker)"
       database: "testdb"
 
-  # Nginx web server (Docker)
+  # Nginx web server (Docker service name)
   - name: nginx-server
     type: http
-    host: localhost
-    port: 8888
+    host: nginx  # Docker service name
+    port: 80
     scheme: http
     duration: 1h
     tags:
@@ -75,7 +62,7 @@ connections:
     metadata:
       description: "Test Nginx web server (Docker)"
 
-  # Production examples
+  # Production examples (external hosts)
   - name: postgres-prod
     type: postgres
     host: prod-db.example.com
@@ -175,10 +162,10 @@ security:
   llm_api_key: ""
 
 logging:
-  audit_log_path: "audit.log"
+  audit_log_path: "stdout"  # Output audit logs to stdout for Docker logging
   log_level: "info"
 
-# Approval workflow configuration (disabled by default)
+# Approval workflow configuration
 approval:
   enabled: true
   patterns:
@@ -210,6 +197,7 @@ approval:
        tag_match: all
        timeout_seconds: 10
   webhook:
-    url: "http://localhost:9000/webhook"  # Mock approval server
+    url: "http://mock-approval:9000/webhook"  # Docker service name
   slack:  # Not needed for mock server
     webhook_url: "https://hooks.slack.com/services/"
+

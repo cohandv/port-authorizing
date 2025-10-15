@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Nginx web server for testing HTTP proxy
+  # Nginx web server acting as backend HTTP service (for testing HTTP proxying)
   nginx:
     image: nginx:alpine
     container_name: port-auth-nginx
@@ -34,6 +34,73 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # Port-Authorizing API Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: port-auth-api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      - api_logs:/app/logs
+    environment:
+      - PORT=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started  # Changed from healthy to started (keycloak takes time)
+      mock-approval:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Mock Approval Server
+  mock-approval:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: port-auth-mock-approval
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+      - AUTO_APPROVE=true
+      - VERBOSE=true
+      - API_URL=http://api:8080
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Nginx reverse proxy / load balancer (sits in front of API for WebSocket testing)
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: port-auth-nginx-proxy
+    ports:
+      - "8090:80"  # Access API through nginx load balancer at localhost:8090
+    volumes:
+      - ./docker/nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # Keycloak for OIDC and SAML2 authentication testing
   keycloak:
@@ -96,4 +163,5 @@ volumes:
   keycloak_data:
   ldap_data:
   ldap_config:
+  api_logs:
 

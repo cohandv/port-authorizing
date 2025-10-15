@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 )
 
@@ -190,62 +192,111 @@ func startLocalProxy(port int, connectionID, token string, expiresAt string, api
 func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL string) {
 	defer localConn.Close()
 
-	// Parse API URL to get host and port
-	apiHost := strings.TrimPrefix(apiURL, "http://")
-	apiHost = strings.TrimPrefix(apiHost, "https://")
+	// Convert HTTP URL to WebSocket URL
+	wsURL := strings.Replace(apiURL, "http://", "ws://", 1)
+	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	wsURL = fmt.Sprintf("%s/api/proxy/%s", wsURL, connectionID)
 
-	// Establish TCP connection to API server
-	apiConn, err := net.DialTimeout("tcp", apiHost, 10*time.Second)
+	// Parse URL and add auth header
+	u, err := url.Parse(wsURL)
 	if err != nil {
-		fmt.Printf("Error connecting to API: %v\n", err)
+		fmt.Printf("Error parsing WebSocket URL: %v\n", err)
 		return
 	}
-	defer apiConn.Close()
 
-	// Send HTTP CONNECT request with auth to establish tunnel
-	connectReq := fmt.Sprintf("POST /api/proxy/%s HTTP/1.1\r\n"+
-		"Host: %s\r\n"+
-		"Authorization: Bearer %s\r\n"+
-		"Connection: Upgrade\r\n"+
-		"\r\n", connectionID, apiHost, token)
+	// Create WebSocket connection with auth header
+	headers := http.Header{}
+	headers.Add("Authorization", fmt.Sprintf("Bearer %s", token))
 
-	_, err = apiConn.Write([]byte(connectReq))
+	// Establish WebSocket connection to API server
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	wsConn, resp, err := dialer.Dial(u.String(), headers)
 	if err != nil {
-		fmt.Printf("Error sending connect request: %v\n", err)
+		if resp != nil {
+			fmt.Printf("Error connecting to API (HTTP %d): %v\n", resp.StatusCode, err)
+		} else {
+			fmt.Printf("Error connecting to API: %v\n", err)
+		}
 		return
 	}
+	defer wsConn.Close()
 
-	// Read HTTP response
-	buf := make([]byte, 4096)
-	n, err := apiConn.Read(buf)
-	if err != nil {
-		fmt.Printf("Error reading response: %v\n", err)
-		return
-	}
+	// Setup ping/pong to keep connection alive (prevent ALB timeout)
+	wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	wsConn.SetPongHandler(func(string) error {
+		wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
 
-	response := string(buf[:n])
-	if !strings.Contains(response, "200") {
-		fmt.Printf("Connection failed: %s\n", response)
-		return
-	}
-
-	// Now we have a transparent tunnel - bidirectionally copy data
-	done := make(chan error, 2)
-
-	// Local client → API → Target
+	// Start ping sender (every 30 seconds)
+	done := make(chan error, 3)
 	go func() {
-		_, err := io.Copy(apiConn, localConn)
-		done <- err
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if err := wsConn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					done <- err
+					return
+				}
+			case <-done:
+				return
+			}
+		}
 	}()
 
-	// Target → API → Local client
+	// Forward data from local connection to WebSocket (Local App → API → Backend)
 	go func() {
-		_, err := io.Copy(localConn, apiConn)
-		done <- err
+		for {
+			buf := make([]byte, 32768) // 32KB buffer
+			n, err := localConn.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					done <- fmt.Errorf("local read error: %w", err)
+				}
+				done <- nil
+				return
+			}
+
+			// Send binary data over WebSocket
+			if err := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
+				done <- fmt.Errorf("websocket write error: %w", err)
+				return
+			}
+		}
 	}()
 
-	// Wait for one direction to finish
-	<-done
+	// Forward data from WebSocket to local connection (Backend → API → Local App)
+	go func() {
+		for {
+			messageType, data, err := wsConn.ReadMessage()
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+					done <- fmt.Errorf("websocket read error: %w", err)
+				}
+				done <- nil
+				return
+			}
+
+			// Only process binary messages (skip ping/pong/text)
+			if messageType == websocket.BinaryMessage {
+				if _, err := localConn.Write(data); err != nil {
+					done <- fmt.Errorf("local write error: %w", err)
+					return
+				}
+			}
+		}
+	}()
+
+	// Wait for any goroutine to finish or error
+	err = <-done
+	if err != nil && err != io.EOF {
+		fmt.Printf("Connection error: %v\n", err)
+	}
 }
 
 // validateToken checks if JWT token is still valid

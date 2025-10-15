@@ -19,6 +19,13 @@ build:
 	@go build $(LDFLAGS) -o $(BIN_DIR)/port-authorizing ./cmd/port-authorizing
 	@echo "✓ Build complete!"
 
+# Build mock approval server
+build-mock:
+	@echo "Building mock approval server..."
+	@mkdir -p $(BIN_DIR)
+	@go build -o $(BIN_DIR)/mock-approval-server ./tools/mock-approval-server
+	@echo "✓ Mock approval server built: $(BIN_DIR)/mock-approval-server"
+
 # Build with optimizations (release mode)
 build-release:
 	@echo "Building release binary..."
@@ -105,7 +112,7 @@ deps:
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf bin/
-	@rm -f audit.log api.log
+	@rm -f audit.log api.log *.out coverage.html
 	@echo "✓ Clean complete!"
 
 # Run all tests (unit + integration)
@@ -157,6 +164,18 @@ docker-logs:
 run-server:
 	@./bin/port-authorizing server --config config.yaml
 
+# Run mock approval server (auto-approve mode)
+run-mock:
+	@./bin/mock-approval-server -auto-approve=true
+
+# Run mock approval server (interactive mode)
+run-mock-interactive:
+	@./bin/mock-approval-server -interactive=true
+
+# Run mock approval server (manual mode - print URLs)
+run-mock-manual:
+	@./bin/mock-approval-server -auto-approve=false
+
 # Install binary to system
 install: build
 	@echo "Installing binary to /usr/local/bin..."
@@ -192,6 +211,7 @@ help:
 	@echo ""
 	@echo "Build Commands:"
 	@echo "  make build              - Build unified binary for current platform"
+	@echo "  make build-mock         - Build mock approval server"
 	@echo "  make build-release      - Build optimized release binary"
 	@echo "  make build-linux        - Build for Linux (amd64)"
 	@echo "  make build-linux-arm64  - Build for Linux (arm64)"
@@ -217,6 +237,9 @@ help:
 	@echo "  make lint               - Run linter"
 	@echo "  make dev                - Run server in development mode"
 	@echo "  make run-server         - Run the server"
+	@echo "  make run-mock           - Run mock approval server (auto-approve)"
+	@echo "  make run-mock-interactive - Run mock approval server (interactive)"
+	@echo "  make run-mock-manual    - Run mock approval server (manual - print URLs)"
 	@echo ""
 	@echo "Testing Commands:"
 	@echo "  make test               - Run Go unit tests"

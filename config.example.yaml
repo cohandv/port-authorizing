@@ -290,6 +290,7 @@ security:
   llm_api_key: ""
 
 logging:
+# audit_log_path: "stdout"
   audit_log_path: "audit.log"
   log_level: "info"
 

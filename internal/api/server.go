@@ -77,6 +77,7 @@ func (s *Server) setupRoutes() {
 	s.router.Use(s.corsMiddleware)
 
 	// Public routes
+	s.router.HandleFunc("/api/info", s.handleServerInfo).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/api/login", s.handleLogin).Methods("POST", "OPTIONS")
 	s.router.HandleFunc("/api/health", s.handleHealth).Methods("GET", "OPTIONS")
 

@@ -11,6 +11,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// ServerInfo represents server configuration for CLI clients
+type ServerInfo struct {
+	BaseURL       string             `json:"base_url"`
+	AuthProviders []AuthProviderInfo `json:"auth_providers"`
+}
+
+// AuthProviderInfo represents available auth provider information
+type AuthProviderInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	RedirectURL string `json:"redirect_url,omitempty"` // For OIDC - the callback URL
+}
+
 // ConnectionInfo represents connection information for the client
 type ConnectionInfo struct {
 	Name     string            `json:"name"`
@@ -31,6 +45,35 @@ type ConnectResponse struct {
 	ProxyURL     string    `json:"proxy_url"`
 	Type         string    `json:"type,omitempty"`     // Connection type
 	Database     string    `json:"database,omitempty"` // For postgres connections
+}
+
+// handleServerInfo returns server configuration information for CLI clients
+func (s *Server) handleServerInfo(w http.ResponseWriter, r *http.Request) {
+	// Build list of auth providers
+	providers := []AuthProviderInfo{}
+	for _, p := range s.config.Auth.Providers {
+		providerInfo := AuthProviderInfo{
+			Name:    p.Name,
+			Type:    p.Type,
+			Enabled: p.Enabled,
+		}
+
+		// For OIDC providers, include the redirect URL (callback URL) from config
+		if p.Type == "oidc" && p.Config != nil {
+			if redirectURL, ok := p.Config["redirect_url"]; ok {
+				providerInfo.RedirectURL = redirectURL
+			}
+		}
+
+		providers = append(providers, providerInfo)
+	}
+
+	info := ServerInfo{
+		BaseURL:       s.config.Server.BaseURL,
+		AuthProviders: providers,
+	}
+
+	respondJSON(w, http.StatusOK, info)
 }
 
 // handleListConnections returns list of available connections

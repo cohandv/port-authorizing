@@ -6,16 +6,71 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os/exec"
 	"runtime"
 	"time"
 )
 
+// serverInfo represents server configuration
+type serverInfo struct {
+	BaseURL       string             `json:"base_url"`
+	AuthProviders []authProviderInfo `json:"auth_providers"`
+}
+
+// authProviderInfo represents auth provider info
+type authProviderInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	RedirectURL string `json:"redirect_url,omitempty"`
+}
+
+// fetchServerInfo retrieves server configuration
+func fetchServerInfo(apiURL string) (*serverInfo, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/api/info", apiURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch server info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned error: %s", string(body))
+	}
+
+	var info serverInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("failed to parse server info: %w", err)
+	}
+
+	return &info, nil
+}
+
 // runOIDCLogin performs browser-based OIDC authentication
 func runOIDCLogin(apiURL string) error {
 	fmt.Println("🔐 Starting browser-based OIDC authentication...")
 	fmt.Println("")
+
+	// Fetch server configuration
+	srvInfo, err := fetchServerInfo(apiURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch server configuration: %w\nPlease ensure the server is running and accessible", err)
+	}
+
+	// Find enabled OIDC provider and get its redirect URL
+	var oidcRedirectURL string
+	for _, provider := range srvInfo.AuthProviders {
+		if provider.Type == "oidc" && provider.Enabled && provider.RedirectURL != "" {
+			oidcRedirectURL = provider.RedirectURL
+			break
+		}
+	}
+
+	if oidcRedirectURL == "" {
+		return fmt.Errorf("no OIDC provider configured on server or missing redirect_url in server config")
+	}
 
 	// Generate state for CSRF protection
 	state, err := generateRandomString(32)
@@ -23,16 +78,16 @@ func runOIDCLogin(apiURL string) error {
 		return fmt.Errorf("failed to generate state: %w", err)
 	}
 
-	// Start local callback server
+	// Start local callback server (extracts port from OIDC redirect URL)
 	callbackChan := make(chan *loginResponse, 1)
 	errorChan := make(chan error, 1)
 
-	server := startCallbackServer(callbackChan, errorChan, state)
+	server := startCallbackServer(callbackChan, errorChan, state, oidcRedirectURL)
 	defer func() { _ = server.Shutdown(context.Background()) }()
 
-	// Build authorization URL (API will redirect to Keycloak)
-	authURL := fmt.Sprintf("%s/api/auth/oidc/login?state=%s&cli_callback=http://localhost:8089/callback",
-		apiURL, state)
+	// Build authorization URL using the OIDC redirect URL from server config
+	authURL := fmt.Sprintf("%s/api/auth/oidc/login?state=%s&cli_callback=%s",
+		apiURL, state, oidcRedirectURL)
 
 	// Open browser
 	fmt.Println("Opening browser for authentication...")
@@ -78,7 +133,30 @@ func runOIDCLogin(apiURL string) error {
 	}
 }
 
-func startCallbackServer(callbackChan chan *loginResponse, errorChan chan error, expectedState string) *http.Server {
+func startCallbackServer(callbackChan chan *loginResponse, errorChan chan error, expectedState string, callbackURL string) *http.Server {
+	// Extract port from callback URL (e.g., "http://localhost:8089/callback" -> "8089")
+	// Default to 8089 if parsing fails
+	port := "8089"
+	if len(callbackURL) > 0 {
+		// Simple extraction: look for :PORT/ pattern
+		start := -1
+		for i := len(callbackURL) - 1; i >= 0; i-- {
+			if callbackURL[i] == ':' {
+				start = i + 1
+				break
+			}
+		}
+		if start > 0 {
+			end := start
+			for end < len(callbackURL) && callbackURL[end] >= '0' && callbackURL[end] <= '9' {
+				end++
+			}
+			if end > start {
+				port = callbackURL[start:end]
+			}
+		}
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +275,7 @@ func startCallbackServer(callbackChan chan *loginResponse, errorChan chan error,
 	})
 
 	server := &http.Server{
-		Addr:    ":8089",
+		Addr:    fmt.Sprintf(":%s", port),
 		Handler: mux,
 	}
 

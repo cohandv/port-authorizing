@@ -51,7 +51,7 @@ echo ""
 
 # Get latest release version
 echo "🔍 Fetching latest release..."
-LATEST_VERSION=$(curl -s https://api.github.com/repos/davidcohan/port-authorizing/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+LATEST_VERSION=$(curl -s https://api.github.com/repos/cohandv/port-authorizing/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 
 if [ -z "$LATEST_VERSION" ]; then
   echo -e "${RED}❌ Failed to fetch latest version${NC}"
@@ -64,13 +64,13 @@ if [ -z "$LATEST_VERSION" ]; then
   echo "Please try one of these alternatives:"
   echo ""
   echo "1. Manual download from GitHub:"
-  echo "   https://github.com/davidcohan/port-authorizing/releases"
+  echo "   https://github.com/cohandv/port-authorizing/releases"
   echo ""
   echo "2. Use Docker:"
   echo "   docker pull cohandv/port-authorizing:latest"
   echo ""
   echo "3. Build from source:"
-  echo "   git clone https://github.com/davidcohan/port-authorizing.git"
+  echo "   git clone https://github.com/cohandv/port-authorizing.git"
   echo "   cd port-authorizing && make build"
   echo ""
   exit 1
@@ -85,7 +85,7 @@ if [ "$OS" = "windows" ]; then
   BINARY_NAME="${BINARY_NAME}.exe"
 fi
 
-DOWNLOAD_URL="https://github.com/davidcohan/port-authorizing/releases/download/${LATEST_VERSION}/${BINARY_NAME}"
+DOWNLOAD_URL="https://github.com/cohandv/port-authorizing/releases/download/${LATEST_VERSION}/${BINARY_NAME}"
 CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
 
 # Create temp directory
@@ -154,5 +154,5 @@ echo ""
 echo "Get started:"
 echo "  port-authorizing -h"
 echo ""
-echo "Documentation: https://github.com/davidcohan/port-authorizing"
+echo "Documentation: https://github.com/cohandv/port-authorizing"
 

@@ -291,7 +291,7 @@ Update whitelist pattern in `config.yaml`.
 For issues or questions:
 - Check the [README.md](README.md) for architecture details
 - Review audit logs for debugging
-- Check [GitHub Issues](https://github.com/davidcohan/port-authorizing/issues)
+- Check [GitHub Issues](https://github.com/cohandv/port-authorizing/issues)
 
 ## Example: Complete Setup
 
@@ -299,7 +299,7 @@ Here's a complete example from scratch:
 
 ```bash
 # 1. Clone and build
-git clone https://github.com/davidcohan/port-authorizing
+git clone https://github.com/cohandv/port-authorizing
 cd port-authorizing
 go build -o bin/port-authorizing-api ./cmd/api
 go build -o bin/port-authorizing-cli ./cmd/cli

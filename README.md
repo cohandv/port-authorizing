@@ -47,7 +47,7 @@ curl -fsSL https://raw.githubusercontent.com/davidcohan/port-authorizing/main/sc
 **Manual download:**
 ```bash
 # Download from GitHub releases
-wget https://github.com/davidcohan/port-authorizing/releases/latest/download/port-authorizing-linux-amd64
+wget https://github.com/cohandv/port-authorizing/releases/latest/download/port-authorizing-linux-amd64
 chmod +x port-authorizing-linux-amd64
 sudo mv port-authorizing-linux-amd64 /usr/local/bin/port-authorizing
 ```
@@ -59,7 +59,7 @@ docker pull cohandv/port-authorizing:latest
 
 **Build from source:**
 ```bash
-git clone https://github.com/davidcohan/port-authorizing.git
+git clone https://github.com/cohandv/port-authorizing.git
 cd port-authorizing
 make build
 ```
@@ -274,7 +274,7 @@ MIT License - see LICENSE file for details.
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **GitHub**: [davidcohan/port-authorizing](https://github.com/davidcohan/port-authorizing)
+- **GitHub**: [davidcohan/port-authorizing](https://github.com/cohandv/port-authorizing)
 - **Docker Hub**: [cohandv/port-authorizing](https://hub.docker.com/r/cohandv/port-authorizing)
-- **Releases**: [GitHub Releases](https://github.com/davidcohan/port-authorizing/releases)
+- **Releases**: [GitHub Releases](https://github.com/cohandv/port-authorizing/releases)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)

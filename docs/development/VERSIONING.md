@@ -169,16 +169,16 @@ port-authorizing --version
 docker run --rm cohandv/port-authorizing:latest --version
 
 # GitHub API
-curl -s https://api.github.com/repos/davidcohan/port-authorizing/releases/latest | jq -r .tag_name
+curl -s https://api.github.com/repos/cohandv/port-authorizing/releases/latest | jq -r .tag_name
 ```
 
 ### View All Releases
 ```bash
 # GitHub
-open https://github.com/davidcohan/port-authorizing/releases
+open https://github.com/cohandv/port-authorizing/releases
 
 # API
-curl -s https://api.github.com/repos/davidcohan/port-authorizing/releases
+curl -s https://api.github.com/repos/cohandv/port-authorizing/releases
 ```
 
 ## 🎯 Version Examples

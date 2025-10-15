@@ -71,8 +71,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Labels
 LABEL org.opencontainers.image.title="Port Authorizing"
 LABEL org.opencontainers.image.description="Secure proxy for any service with authentication, authorization, and audit logging"
-LABEL org.opencontainers.image.url="https://github.com/davidcohan/port-authorizing"
-LABEL org.opencontainers.image.source="https://github.com/davidcohan/port-authorizing"
+LABEL org.opencontainers.image.url="https://github.com/cohandv/port-authorizing"
+LABEL org.opencontainers.image.source="https://github.com/cohandv/port-authorizing"
 LABEL org.opencontainers.image.vendor="David Cohan"
 LABEL org.opencontainers.image.licenses="MIT"
 

@@ -1,3 +1,10 @@
+## [1.7.3](https://github.com/cohandv/port-authorizing/compare/v1.7.2...v1.7.3) (2025-10-15)
+
+
+### Bug Fixes
+
+* callback for oidc was hardcoded, now is get from server ([001d2b0](https://github.com/cohandv/port-authorizing/commit/001d2b09f45aa9a7027d5e8d783c58b451f357bc))
+
 ## [1.7.2](https://github.com/cohandv/port-authorizing/compare/v1.7.1...v1.7.2) (2025-10-15)
 
 

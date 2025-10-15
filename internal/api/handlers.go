@@ -35,8 +35,8 @@ type ConnectResponse struct {
 
 // handleListConnections returns list of available connections
 func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 
 	// Log audit event
 	audit.Log(s.config.Logging.AuditLogPath, username, "list_connections", "", map[string]interface{}{
@@ -79,8 +79,8 @@ func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 
 // handleConnect establishes a new proxy connection
 func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionName := vars["name"]
 
@@ -155,8 +155,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleProxy handles proxying requests to the actual endpoint
+//nolint:unused // Reserved for legacy HTTP proxy support
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
+	username := r.Context().Value(ContextKeyUsername).(string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 

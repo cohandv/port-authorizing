@@ -89,7 +89,7 @@ func (p *SimplePostgresProxy) proxyWithQueryLogging(ctx context.Context, src, ds
 		}
 
 		// Set read deadline to allow context cancellation
-		src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_ = src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 
 		n, err := reader.Read(buf)
 		if err != nil {

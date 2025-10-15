@@ -94,9 +94,9 @@ func TestManager_AddApprovalPattern(t *testing.T) {
 
 func TestManager_RequiresApproval(t *testing.T) {
 	mgr := NewManager(5 * time.Minute)
-	mgr.AddApprovalPattern("^DELETE /.*", nil, "", 3*time.Minute)
-	mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 10*time.Minute)
-	mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", 3*time.Minute)
+	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 10*time.Minute)
+	_ = mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", 5*time.Minute)
 
 	tests := []struct {
 		name           string

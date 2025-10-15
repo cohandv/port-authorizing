@@ -12,8 +12,8 @@ import (
 // handlePostgresProxy handles Postgres protocol connections
 // This creates a transparent TCP tunnel but with protocol-aware query logging
 func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -70,7 +70,7 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 	bufrw.Flush()
 
 	// Set deadline based on connection expiry
-	clientConn.SetDeadline(conn.ExpiresAt)
+	_ = clientConn.SetDeadline(conn.ExpiresAt)
 
 	// Create Postgres proxy with credential substitution and whitelist
 	pgProxy := proxy.NewPostgresAuthProxy(

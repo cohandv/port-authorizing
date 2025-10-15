@@ -13,6 +13,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// ContextKey is a custom type for context keys to avoid collisions
+type ContextKey string
+
+const (
+	// ContextKeyUsername is the context key for storing username
+	ContextKeyUsername ContextKey = "username"
+	// ContextKeyRoles is the context key for storing user roles
+	ContextKeyRoles ContextKey = "roles"
+)
+
 // AuthService handles authentication operations
 type AuthService struct {
 	config      *config.Config
@@ -163,8 +173,8 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Add username and roles to context
-		ctx := context.WithValue(r.Context(), "username", claims.Username)
-		ctx = context.WithValue(ctx, "roles", claims.Roles)
+		ctx := context.WithValue(r.Context(), ContextKeyUsername, claims.Username)
+		ctx = context.WithValue(ctx, ContextKeyRoles, claims.Roles)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

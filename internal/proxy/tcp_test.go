@@ -154,10 +154,10 @@ func TestTCPProxy_Integration(t *testing.T) {
 				return
 			}
 
-			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c) // Echo all data back
-			}(conn)
+		go func(c net.Conn) {
+			defer c.Close()
+			_, _ = io.Copy(c, c) // Echo all data back
+		}(conn)
 		}
 	}()
 
@@ -239,10 +239,10 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 			if err != nil {
 				return
 			}
-			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c)
-			}(conn)
+		go func(c net.Conn) {
+			defer c.Close()
+			_, _ = io.Copy(c, c)
+		}(conn)
 		}
 	}()
 
@@ -267,9 +267,9 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 			b.Fatalf("Failed to dial: %v", err)
 		}
 
-		conn.Write(testData)
-		buf := make([]byte, len(testData))
-		io.ReadFull(conn, buf)
-		conn.Close()
+	conn.Write(testData)
+	buf := make([]byte, len(testData))
+	_, _ = io.ReadFull(conn, buf)
+	conn.Close()
 	}
 }

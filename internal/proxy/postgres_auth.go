@@ -590,10 +590,11 @@ func (p *PostgresAuthProxy) sendAuthError(conn net.Conn, message string) {
 	buf.Write(lenBuf)
 	buf.WriteString(fields)
 
-	conn.Write(buf.Bytes())
+	_, _ = conn.Write(buf.Bytes())
 }
 
 // validateAPICredentials checks API username/password
+//nolint:unused // Reserved for future API credential validation
 func (p *PostgresAuthProxy) validateAPICredentials(username, password string) bool {
 	if p.apiConfig == nil {
 		return false
@@ -822,7 +823,7 @@ func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
 	buf.Write(fields.Bytes())
 
 	// Send complete error message to client
-	conn.Write(buf.Bytes())
+	_, _ = conn.Write(buf.Bytes())
 
 	// Now send ReadyForQuery to indicate we're ready for next command
 	// This prevents client from hanging

@@ -18,8 +18,8 @@ import (
 // handleHTTPProxyStream handles HTTP connections through TCP stream with approval support
 // This intercepts HTTP requests from the stream, parses them, checks approval, then forwards to backend
 func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -72,7 +72,7 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 	bufrw.Flush()
 
 	// Set deadline based on connection expiry
-	clientConn.SetDeadline(conn.ExpiresAt)
+	_ = clientConn.SetDeadline(conn.ExpiresAt)
 
 	// Use the HTTP proxy instance from connection (which has approval support)
 	httpProxy := conn.Proxy
@@ -193,10 +193,10 @@ func readHTTPRequest(reader *bufio.Reader) ([]byte, error) {
 		lines := strings.Split(requestStr, "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "content-length:") {
-				parts := strings.SplitN(line, ":", 2)
-				if len(parts) == 2 {
-					var contentLength int
-					fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				var contentLength int
+				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
 
 					if contentLength > 0 {
 						// Read body

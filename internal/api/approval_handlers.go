@@ -23,7 +23,7 @@ func (s *Server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	approver := r.URL.Query().Get("approver")
 	if approver == "" {
 		// Try to get from auth token
-		username, ok := r.Context().Value("username").(string)
+		username, ok := r.Context().Value(ContextKeyUsername).(string)
 		if ok {
 			approver = username
 		} else {
@@ -93,7 +93,7 @@ func (s *Server) handleRejectRequest(w http.ResponseWriter, r *http.Request) {
 	// Get approver info
 	approver := r.URL.Query().Get("approver")
 	if approver == "" {
-		username, ok := r.Context().Value("username").(string)
+		username, ok := r.Context().Value(ContextKeyUsername).(string)
 		if ok {
 			approver = username
 		} else {

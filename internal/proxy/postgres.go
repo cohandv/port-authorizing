@@ -361,6 +361,7 @@ func (p *PostgresProxy) sendError(conn net.Conn, code, message string) {
 }
 
 // captureAndForward captures messages for logging while forwarding
+//nolint:unused // Reserved for future message capture/debugging
 func captureAndForward(reader io.Reader, writer io.Writer, captureFunc func([]byte)) error {
 	buf := make([]byte, 8192)
 	for {
@@ -387,6 +388,7 @@ func captureAndForward(reader io.Reader, writer io.Writer, captureFunc func([]by
 }
 
 // parsePostgresMessage attempts to parse Postgres protocol messages for logging
+//nolint:unused // Reserved for future message parsing enhancements
 func parsePostgresMessage(data []byte) *string {
 	if len(data) < 5 {
 		return nil

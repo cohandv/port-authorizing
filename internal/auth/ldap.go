@@ -93,8 +93,10 @@ func (p *LDAPProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 		tlsConfig := &tls.Config{
 			InsecureSkipVerify: p.skipTLSVerify,
 		}
+		//nolint:staticcheck // SA1019: Using DialTLS for compatibility
 		l, err = ldap.DialTLS("tcp", p.url, tlsConfig)
 	} else {
+		//nolint:staticcheck // SA1019: Using Dial for compatibility
 		l, err = ldap.Dial("tcp", p.url)
 	}
 

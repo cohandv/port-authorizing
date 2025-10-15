@@ -65,7 +65,9 @@ func (a *Authorizer) GetWhitelistForConnection(roles []string, connectionName st
 	}
 
 	// Legacy: if connection has direct whitelist and no tags, use it
+	//nolint:staticcheck // SA1019: Supporting deprecated Whitelist field for backwards compatibility
 	if len(conn.Whitelist) > 0 && len(conn.Tags) == 0 {
+		//nolint:staticcheck // SA1019: Supporting deprecated Whitelist field for backwards compatibility
 		return conn.Whitelist
 	}
 
@@ -222,6 +224,7 @@ func (a *Authorizer) GetConnectionInfo(connectionName string) map[string]interfa
 }
 
 // Helper function to check if string slice contains a value
+//nolint:unused // Reserved for future tag matching logic
 func contains(slice []string, value string) bool {
 	for _, item := range slice {
 		if strings.EqualFold(item, value) {

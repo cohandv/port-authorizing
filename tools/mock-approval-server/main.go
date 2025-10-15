@@ -103,7 +103,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	// Respond to webhook call immediately
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":  "received",
 		"message": "Approval request received",
 	})
@@ -224,7 +224,7 @@ func promptForApproval(payload WebhookPayload) {
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":       "ok",
 		"service":      "mock-approval-server",
 		"auto_approve": *autoApprove,

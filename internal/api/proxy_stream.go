@@ -30,7 +30,7 @@ var upgrader = websocket.Upgrader{
 // handleProxyStream handles WebSocket-based reverse tunneling to target service
 // Routes to appropriate protocol handler based on connection type
 func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
+	username := r.Context().Value(ContextKeyUsername).(string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -230,8 +230,8 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 
 // handlePostgresWebSocket handles PostgreSQL connections via WebSocket with protocol-aware parsing
 func (s *Server) handlePostgresWebSocket(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -311,8 +311,8 @@ func (s *Server) handlePostgresWebSocket(w http.ResponseWriter, r *http.Request)
 // handleHTTPWebSocket handles HTTP/HTTPS connections via WebSocket with HTTP-aware parsing
 // This enables approval workflow and whitelist checking for HTTP traffic over WebSocket
 func (s *Server) handleHTTPWebSocket(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -475,10 +475,10 @@ func readHTTPRequestFromStream(reader *bufio.Reader) ([]byte, error) {
 		lines := strings.Split(requestStr, "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "content-length:") {
-				parts := strings.SplitN(line, ":", 2)
-				if len(parts) == 2 {
-					var contentLength int
-					fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				var contentLength int
+				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
 
 					if contentLength > 0 {
 						body := make([]byte, contentLength)

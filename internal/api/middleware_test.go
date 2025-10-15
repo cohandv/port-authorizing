@@ -35,8 +35,8 @@ func TestAuthMiddleware(t *testing.T) {
 
 	// Create a test handler that checks if authentication info is in context
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		username := r.Context().Value("username")
-		roles := r.Context().Value("roles")
+		username := r.Context().Value(ContextKeyUsername)
+		roles := r.Context().Value(ContextKeyRoles)
 
 		if username == nil {
 			t.Error("username not found in context")
@@ -105,8 +105,8 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestContextHelpers(t *testing.T) {
 	t.Run("username in context", func(t *testing.T) {
-		ctx := context.WithValue(context.Background(), "username", "testuser")
-		username := ctx.Value("username")
+		ctx := context.WithValue(context.Background(), ContextKeyUsername, "testuser")
+		username := ctx.Value(ContextKeyUsername)
 		if username == nil {
 			t.Fatal("username not found in context")
 		}
@@ -117,8 +117,8 @@ func TestContextHelpers(t *testing.T) {
 
 	t.Run("roles in context", func(t *testing.T) {
 		roles := []string{"admin", "developer"}
-		ctx := context.WithValue(context.Background(), "roles", roles)
-		gotRoles := ctx.Value("roles")
+		ctx := context.WithValue(context.Background(), ContextKeyRoles, roles)
+		gotRoles := ctx.Value(ContextKeyRoles)
 		if gotRoles == nil {
 			t.Fatal("roles not found in context")
 		}
@@ -129,4 +129,3 @@ func TestContextHelpers(t *testing.T) {
 }
 
 // Benchmarks tested via handlers_test.go
-

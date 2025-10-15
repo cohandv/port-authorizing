@@ -132,7 +132,7 @@ func TestLog_NonExistentDirectory(t *testing.T) {
 		}
 	}()
 
-	Log("/nonexistent/directory/audit.log", "user", "action", "target", nil)
+	_ = Log("/nonexistent/directory/audit.log", "user", "action", "target", nil)
 }
 
 func TestLog_EmptyDetails(t *testing.T) {
@@ -182,8 +182,8 @@ func TestClose(t *testing.T) {
 	tmpFile2.Close()
 
 	// Log to multiple files
-	Log(tmpFile1.Name(), "user1", "action1", "resource1", nil)
-	Log(tmpFile2.Name(), "user2", "action2", "resource2", nil)
+	_ = Log(tmpFile1.Name(), "user1", "action1", "resource1", nil)
+	_ = Log(tmpFile2.Name(), "user2", "action2", "resource2", nil)
 
 	// Close should close all open files
 	Close()
@@ -203,9 +203,9 @@ func TestLog_ReopenAfterClose(t *testing.T) {
 	tmpFile.Close()
 
 	// Log, close, log again
-	Log(tmpFile.Name(), "user1", "action1", "resource1", nil)
+	_ = Log(tmpFile.Name(), "user1", "action1", "resource1", nil)
 	Close()
-	Log(tmpFile.Name(), "user2", "action2", "resource2", nil)
+	_ = Log(tmpFile.Name(), "user2", "action2", "resource2", nil)
 
 	// Read the log file
 	content, err := os.ReadFile(tmpFile.Name())
@@ -232,7 +232,7 @@ func TestLog_ConcurrentWrites(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			Log(tmpFile.Name(), "user", "action", "resource", map[string]interface{}{
+			_ = Log(tmpFile.Name(), "user", "action", "resource", map[string]interface{}{
 				"id": id,
 			})
 			done <- true
@@ -274,4 +274,3 @@ func BenchmarkLog(b *testing.B) {
 		Log(tmpFile.Name(), "user", "action", "target", details)
 	}
 }
-

@@ -82,7 +82,7 @@ func TestHandleConnect_FullFlow(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	tests := []struct {
@@ -184,7 +184,7 @@ func TestHandleListConnections_WithFiltering(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	// List connections
@@ -256,7 +256,7 @@ func BenchmarkHandleConnect(b *testing.B) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	b.ResetTimer()

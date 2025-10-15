@@ -212,6 +212,7 @@ func TestConnectionManager_GetConnection(t *testing.T) {
 			if !tt.wantErr {
 				if conn == nil {
 					t.Error("GetConnection() returned nil connection")
+					return
 				}
 				if conn.ID != tt.connectionID {
 					t.Errorf("Connection ID = %s, want %s", conn.ID, tt.connectionID)

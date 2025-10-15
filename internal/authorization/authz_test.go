@@ -260,7 +260,7 @@ func TestAuthorizer_GetWhitelistForConnection(t *testing.T) {
 			got := authz.GetWhitelistForConnection(tt.roles, tt.connectionName)
 
 			if tt.wantPatterns == nil {
-				if got != nil && len(got) > 0 {
+				if len(got) > 0 {
 					t.Errorf("GetWhitelistForConnection() = %v, want nil or empty", got)
 				}
 				return

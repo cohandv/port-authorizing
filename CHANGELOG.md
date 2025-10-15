@@ -1,3 +1,10 @@
+## [1.8.0](https://github.com/cohandv/port-authorizing/compare/v1.7.4...v1.8.0) (2025-10-15)
+
+
+### Features
+
+* added basic admin ui ([d4f72c5](https://github.com/cohandv/port-authorizing/commit/d4f72c515ebbceb4c0970634cbc6b27e9698c19b))
+
 ## [1.7.4](https://github.com/cohandv/port-authorizing/compare/v1.7.3...v1.7.4) (2025-10-15)
 
 

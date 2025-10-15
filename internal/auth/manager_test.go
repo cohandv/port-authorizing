@@ -271,6 +271,6 @@ func BenchmarkNewManager(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewManager(config)
+		_, _ = NewManager(config)
 	}
 }

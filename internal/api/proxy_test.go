@@ -67,7 +67,7 @@ func TestHandleProxyStream_PostgresConnection(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	// Create connection
@@ -81,7 +81,7 @@ func TestHandleProxyStream_PostgresConnection(t *testing.T) {
 	}
 
 	var connectResp map[string]interface{}
-	json.NewDecoder(connectW.Body).Decode(&connectResp)
+	_ = json.NewDecoder(connectW.Body).Decode(&connectResp)
 	connectionID := connectResp["connection_id"].(string)
 
 	// Test proxy endpoint exists (we can't fully test TCP proxy without backend)
@@ -101,7 +101,7 @@ func TestHandleProxyStream_HTTPConnection(t *testing.T) {
 	// Create a test backend
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("backend response"))
+		_, _ = w.Write([]byte("backend response"))
 	}))
 	defer backend.Close()
 
@@ -157,7 +157,7 @@ func TestHandleProxyStream_HTTPConnection(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	// Create connection
@@ -171,7 +171,7 @@ func TestHandleProxyStream_HTTPConnection(t *testing.T) {
 	}
 
 	var connectResp map[string]interface{}
-	json.NewDecoder(connectW.Body).Decode(&connectResp)
+	_ = json.NewDecoder(connectW.Body).Decode(&connectResp)
 	connectionID := connectResp["connection_id"].(string)
 
 	// Test proxy endpoint
@@ -221,7 +221,7 @@ func TestHandleProxyStream_InvalidConnectionID(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	// Try to access non-existent connection
@@ -289,7 +289,7 @@ func TestHandleProxyStream_ExpiredConnection(t *testing.T) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	// Create connection with very short duration
@@ -299,7 +299,7 @@ func TestHandleProxyStream_ExpiredConnection(t *testing.T) {
 	server.router.ServeHTTP(connectW, connectReq)
 
 	var connectResp map[string]interface{}
-	json.NewDecoder(connectW.Body).Decode(&connectResp)
+	_ = json.NewDecoder(connectW.Body).Decode(&connectResp)
 	connectionID := connectResp["connection_id"].(string)
 
 	// Wait for connection to expire
@@ -365,7 +365,7 @@ func BenchmarkHandleProxyStream(b *testing.B) {
 	server.handleLogin(loginW, loginReqHTTP)
 
 	var loginResp map[string]interface{}
-	json.NewDecoder(loginW.Body).Decode(&loginResp)
+	_ = json.NewDecoder(loginW.Body).Decode(&loginResp)
 	token := loginResp["token"].(string)
 
 	connectReq := httptest.NewRequest("POST", "/api/connect/test-http", nil)
@@ -374,7 +374,7 @@ func BenchmarkHandleProxyStream(b *testing.B) {
 	server.router.ServeHTTP(connectW, connectReq)
 
 	var connectResp map[string]interface{}
-	json.NewDecoder(connectW.Body).Decode(&connectResp)
+	_ = json.NewDecoder(connectW.Body).Decode(&connectResp)
 	connectionID := connectResp["connection_id"].(string)
 
 	b.ResetTimer()
@@ -385,4 +385,3 @@ func BenchmarkHandleProxyStream(b *testing.B) {
 		server.router.ServeHTTP(proxyW, proxyReq)
 	}
 }
-

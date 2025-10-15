@@ -15,8 +15,8 @@ func TestSaveAndLoadToken(t *testing.T) {
 
 	// Set config path for testing
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	token := "test.token.here"
 
@@ -46,8 +46,8 @@ func TestLoadToken_NotExist(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	_, err := loadToken()
 	if err == nil {
@@ -208,11 +208,11 @@ func TestGetUsernameFromToken(t *testing.T) {
 func TestSaveToken_InvalidPath(t *testing.T) {
 	// Set HOME to a file (not a directory) to cause mkdir to fail
 	tmpFile := filepath.Join(t.TempDir(), "notadir")
-	os.WriteFile(tmpFile, []byte("test"), 0644)
+	_ = os.WriteFile(tmpFile, []byte("test"), 0644)
 
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpFile)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpFile)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	ctx := Context{
 		Name:   "test",
@@ -229,15 +229,15 @@ func TestSaveToken_InvalidPath(t *testing.T) {
 func TestLoadToken_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".port-auth")
-	os.MkdirAll(configDir, 0755)
+	_ = os.MkdirAll(configDir, 0755)
 	configFile := filepath.Join(configDir, "config.json")
 
 	// Write invalid JSON
-	os.WriteFile(configFile, []byte("invalid json{"), 0600)
+	_ = os.WriteFile(configFile, []byte("invalid json{"), 0600)
 
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	_, err := LoadConfig()
 	if err == nil {
@@ -248,15 +248,15 @@ func TestLoadToken_InvalidJSON(t *testing.T) {
 func TestLoadToken_NoToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, ".port-auth")
-	os.MkdirAll(configDir, 0755)
+	_ = os.MkdirAll(configDir, 0755)
 	configFile := filepath.Join(configDir, "config.json")
 
 	// Write config with context but no token
-	os.WriteFile(configFile, []byte(`{"contexts":[{"name":"test","api_url":"http://localhost:8080","token":""}],"current_context":"test"}`), 0600)
+	_ = os.WriteFile(configFile, []byte(`{"contexts":[{"name":"test","api_url":"http://localhost:8080","token":""}],"current_context":"test"}`), 0600)
 
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	_, err := loadToken()
 	if err == nil {
@@ -267,8 +267,8 @@ func TestLoadToken_NoToken(t *testing.T) {
 func BenchmarkSaveToken(b *testing.B) {
 	tmpDir := b.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	ctx := Context{
 		Name:   "test",
@@ -278,26 +278,26 @@ func BenchmarkSaveToken(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		SaveContext(ctx, true)
+		_ = SaveContext(ctx, true)
 	}
 }
 
 func BenchmarkLoadToken(b *testing.B) {
 	tmpDir := b.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	ctx := Context{
 		Name:   "test",
 		APIURL: "http://localhost:8080",
 		Token:  "test.token.here",
 	}
-	SaveContext(ctx, true)
+	_ = SaveContext(ctx, true)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		loadToken()
+		_, _ = loadToken()
 	}
 }
 
@@ -313,7 +313,7 @@ func BenchmarkValidateToken(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		validateToken(token)
+		_ = validateToken(token)
 	}
 }
 
@@ -328,6 +328,6 @@ func BenchmarkGetUsernameFromToken(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		getUsernameFromToken(token)
+		_, _ = getUsernameFromToken(token)
 	}
 }

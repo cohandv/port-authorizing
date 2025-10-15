@@ -76,10 +76,10 @@ func (s *SlackProvider) SendApprovalRequest(ctx context.Context, req *Request) e
 	if err != nil {
 		return fmt.Errorf("failed to send Slack request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Slack webhook returned non-success status: %d", resp.StatusCode)
+		return fmt.Errorf("slack webhook returned non-success status: %d", resp.StatusCode)
 	}
 
 	return nil

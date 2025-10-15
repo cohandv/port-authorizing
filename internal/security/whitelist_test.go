@@ -168,7 +168,7 @@ func BenchmarkValidateQuery_SinglePattern(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ValidateQuery(whitelist, query)
+		_ = ValidateQuery(whitelist, query)
 	}
 }
 
@@ -178,7 +178,7 @@ func BenchmarkValidateQuery_MultiplePatterns(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ValidateQuery(whitelist, query)
+		_ = ValidateQuery(whitelist, query)
 	}
 }
 
@@ -188,6 +188,6 @@ func BenchmarkValidateQuery_NoMatch(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ValidateQuery(whitelist, query)
+		_ = ValidateQuery(whitelist, query)
 	}
 }

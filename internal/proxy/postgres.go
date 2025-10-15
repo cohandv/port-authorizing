@@ -60,7 +60,7 @@ func NewPostgresProxy(cfg *config.ConnectionConfig, auditLogPath, username, conn
 // HandleConnection handles a Postgres protocol connection
 // Client connects with API credentials, proxy intercepts queries and forwards to backend
 func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	// Create pgproto3 backend to handle client messages
 	clientReader := newSimpleChunkReader(clientConn)
@@ -82,7 +82,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 
 	case *pgproto3.SSLRequest:
 		// Reject SSL for simplicity
-		clientConn.Write([]byte("N"))
+		_, _ = clientConn.Write([]byte("N"))
 
 		// Read the real startup message
 		startupMsg, err = backend.ReceiveStartupMessage()
@@ -123,7 +123,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	// Validate API credentials
 	if !p.validateAPICredentials(clientUsername, passwordMsg.Password) {
 		p.sendError(clientConn, "28P01", "authentication failed: invalid API credentials")
-		audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
+		_ = audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
 			"connection_id": p.connectionID,
 			"client_user":   clientUsername,
 			"reason":        "invalid_credentials",
@@ -137,7 +137,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	clientConn.Write(buf)
+	_, _ = clientConn.Write(buf)
 
 	// Send some parameter status messages (postgres expects these)
 	params := []struct{ name, value string }{
@@ -149,7 +149,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 		paramMsg := &pgproto3.ParameterStatus{Name: param.name, Value: param.value}
 		buf, err = paramMsg.Encode(nil)
 		if err == nil {
-			clientConn.Write(buf)
+			_, _ = clientConn.Write(buf)
 		}
 	}
 
@@ -157,7 +157,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	keyData := &pgproto3.BackendKeyData{ProcessID: 12345, SecretKey: 67890}
 	buf, err = keyData.Encode(nil)
 	if err == nil {
-		clientConn.Write(buf)
+		_, _ = clientConn.Write(buf)
 	}
 
 	// Send ready for query
@@ -166,9 +166,9 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	clientConn.Write(buf)
+	_, _ = clientConn.Write(buf)
 
-	audit.Log(p.auditLogPath, p.username, "postgres_auth", p.config.Name, map[string]interface{}{
+	_ = audit.Log(p.auditLogPath, p.username, "postgres_auth", p.config.Name, map[string]interface{}{
 		"connection_id": p.connectionID,
 		"client_user":   clientUsername,
 		"database":      requestedDatabase,
@@ -187,7 +187,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 		p.sendError(clientConn, "08006", fmt.Sprintf("could not connect to backend: %v", err))
 		return fmt.Errorf("failed to connect to backend: %w", err)
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
 	// Create frontend to backend
 	backendReader := newSimpleChunkReader(backendConn)
@@ -205,7 +205,7 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode startup message: %w", err)
 	}
-	backendConn.Write(startupBuf)
+	_, _ = backendConn.Write(startupBuf)
 
 	// Handle backend authentication
 	if err := p.authenticateToBackend(frontend, backendConn); err != nil {
@@ -220,14 +220,14 @@ func (p *PostgresProxy) HandleConnection(clientConn net.Conn) error {
 	// Client -> Backend (log queries)
 	go func() {
 		defer wg.Done()
-		defer backendConn.Close()
+		defer func() { _ = backendConn.Close() }()
 		p.copyWithQueryLogging(clientConn, backendConn, true)
 	}()
 
 	// Backend -> Client (pass through)
 	go func() {
 		defer wg.Done()
-		defer clientConn.Close()
+		defer func() { _ = clientConn.Close() }()
 		p.copyWithQueryLogging(backendConn, clientConn, false)
 	}()
 
@@ -253,7 +253,7 @@ func (p *PostgresProxy) authenticateToBackend(frontend *pgproto3.Frontend, conn 
 			if err != nil {
 				return err
 			}
-			conn.Write(buf)
+			_, _ = conn.Write(buf)
 
 		case *pgproto3.AuthenticationMD5Password:
 			return fmt.Errorf("MD5 authentication not supported")
@@ -292,7 +292,7 @@ func (p *PostgresProxy) copyWithQueryLogging(src, dst net.Conn, logQueries bool)
 
 		if err != nil {
 			if err != io.EOF {
-				audit.Log(p.auditLogPath, p.username, "postgres_error", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "postgres_error", p.config.Name, map[string]interface{}{
 					"connection_id": p.connectionID,
 					"error":         err.Error(),
 					"log_queries":   logQueries,
@@ -340,7 +340,7 @@ func (p *PostgresProxy) logQuery(query string) {
 		return
 	}
 
-	audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
+	_ = audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
 		"connection_id": p.connectionID,
 		"query":         query,
 		"database":      p.config.BackendDatabase,
@@ -356,11 +356,13 @@ func (p *PostgresProxy) sendError(conn net.Conn, code, message string) {
 	}
 	buf, err := errMsg.Encode(nil)
 	if err == nil {
-		conn.Write(buf)
+		_, _ = conn.Write(buf)
 	}
 }
 
 // captureAndForward captures messages for logging while forwarding
+//
+//nolint:unused // Reserved for future message capture/debugging
 func captureAndForward(reader io.Reader, writer io.Writer, captureFunc func([]byte)) error {
 	buf := make([]byte, 8192)
 	for {
@@ -387,6 +389,8 @@ func captureAndForward(reader io.Reader, writer io.Writer, captureFunc func([]by
 }
 
 // parsePostgresMessage attempts to parse Postgres protocol messages for logging
+//
+//nolint:unused // Reserved for future message parsing enhancements
 func parsePostgresMessage(data []byte) *string {
 	if len(data) < 5 {
 		return nil

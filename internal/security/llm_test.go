@@ -175,6 +175,6 @@ func BenchmarkLLMClient_AnalyzeQuery_NoKey(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		client.AnalyzeQuery(query, "SQL")
+		_, _, _ = client.AnalyzeQuery(query, "SQL")
 	}
 }

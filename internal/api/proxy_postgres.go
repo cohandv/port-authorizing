@@ -12,8 +12,8 @@ import (
 // handlePostgresProxy handles Postgres protocol connections
 // This creates a transparent TCP tunnel but with protocol-aware query logging
 func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
-	username := r.Context().Value("username").(string)
-	roles, _ := r.Context().Value("roles").([]string)
+	username := r.Context().Value(ContextKeyUsername).(string)
+	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 	vars := mux.Vars(r)
 	connectionID := vars["connectionID"]
 
@@ -40,7 +40,7 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 	whitelist := s.authz.GetWhitelistForConnection(roles, conn.Config.Name)
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect", conn.Config.Name, map[string]interface{}{
 		"connection_id":   connectionID,
 		"method":          r.Method,
 		"roles":           roles,
@@ -59,18 +59,18 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to hijack connection: %v", err))
 		return
 	}
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	// Register this stream with the connection for timeout enforcement
 	conn.RegisterStream(clientConn)
 	defer conn.UnregisterStream(clientConn)
 
 	// Send HTTP 200 response to indicate proxy is ready
-	fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n")
-	bufrw.Flush()
+	_, _ = fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n")
+	_ = bufrw.Flush()
 
 	// Set deadline based on connection expiry
-	clientConn.SetDeadline(conn.ExpiresAt)
+	_ = clientConn.SetDeadline(conn.ExpiresAt)
 
 	// Create Postgres proxy with credential substitution and whitelist
 	pgProxy := proxy.NewPostgresAuthProxy(
@@ -91,14 +91,14 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 	// This will authenticate the client with API credentials,
 	// log all queries, and forward to backend with backend credentials
 	if err := pgProxy.HandleConnection(clientConn); err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "postgres_error", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_error", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         err.Error(),
 		})
 		return
 	}
 
-	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_disconnect", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_disconnect", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 	})
 }

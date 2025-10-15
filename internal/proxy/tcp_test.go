@@ -36,7 +36,7 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverAddr := listener.Addr().(*net.TCPAddr)
 
@@ -48,7 +48,7 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 			t.Logf("Server accept error: %v", err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Echo server: read and write back
 		buf := make([]byte, 1024)
@@ -58,9 +58,9 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 			return
 		}
 
-		if n > 0 {
-			conn.Write(buf[:n])
-		}
+	if n > 0 {
+		_, _ = conn.Write(buf[:n])
+	}
 
 		serverDone <- true
 	}()
@@ -81,7 +81,7 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to backend: %v", err)
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
 	// Send test data
 	testData := []byte("PING\r\n")
@@ -110,7 +110,7 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 	}
 
 	// Close proxy
-	proxy.Close()
+	_ = proxy.Close()
 }
 
 func TestTCPProxy_Close(t *testing.T) {
@@ -142,7 +142,7 @@ func TestTCPProxy_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverAddr := listener.Addr().(*net.TCPAddr)
 
@@ -154,10 +154,10 @@ func TestTCPProxy_Integration(t *testing.T) {
 				return
 			}
 
-			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c) // Echo all data back
-			}(conn)
+		go func(c net.Conn) {
+			defer func() { _ = c.Close() }()
+			_, _ = io.Copy(c, c) // Echo all data back
+		}(conn)
 		}
 	}()
 
@@ -170,7 +170,7 @@ func TestTCPProxy_Integration(t *testing.T) {
 	}
 
 	proxy := NewTCPProxy(connConfig)
-	defer proxy.Close()
+	defer func() { _ = proxy.Close() }()
 
 	// Connect to the backend through proxy config
 	backendAddr := fmt.Sprintf("%s:%d", connConfig.Host, connConfig.Port)
@@ -178,7 +178,7 @@ func TestTCPProxy_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial backend: %v", err)
 	}
-	defer testConn.Close()
+	defer func() { _ = testConn.Close() }()
 
 	// Test multiple messages
 	testMessages := []string{
@@ -218,7 +218,7 @@ func BenchmarkTCPProxy_Create(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		proxy := NewTCPProxy(connConfig)
-		proxy.Close()
+		_ = proxy.Close()
 	}
 }
 
@@ -228,7 +228,7 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverAddr := listener.Addr().(*net.TCPAddr)
 
@@ -239,10 +239,10 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 			if err != nil {
 				return
 			}
-			go func(c net.Conn) {
-				defer c.Close()
-				io.Copy(c, c)
-			}(conn)
+		go func(c net.Conn) {
+			defer func() { _ = c.Close() }()
+			_, _ = io.Copy(c, c)
+		}(conn)
 		}
 	}()
 
@@ -254,7 +254,7 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 	}
 
 	proxy := NewTCPProxy(connConfig)
-	defer proxy.Close()
+	defer func() { _ = proxy.Close() }()
 
 	testData := []byte("benchmark test")
 
@@ -264,12 +264,12 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		conn, err := net.Dial("tcp", backendAddr)
 		if err != nil {
-			b.Fatalf("Failed to dial: %v", err)
-		}
+		b.Fatalf("Failed to dial: %v", err)
+	}
 
-		conn.Write(testData)
-		buf := make([]byte, len(testData))
-		io.ReadFull(conn, buf)
-		conn.Close()
+	_, _ = conn.Write(testData)
+	buf := make([]byte, len(testData))
+	_, _ = io.ReadFull(conn, buf)
+	_ = conn.Close()
 	}
 }

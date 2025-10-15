@@ -18,7 +18,7 @@ func RunServer(cmd *cobra.Command, args []string) error {
 	// Parse command line flags (for backward compatibility)
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	configFlag := fs.String("config", configPath, "Path to configuration file")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 
 	if *configFlag != "" {
 		configPath = *configFlag

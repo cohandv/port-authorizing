@@ -70,8 +70,8 @@ func runContextList(cmd *cobra.Command, args []string) error {
 	fmt.Println("===================")
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "CURRENT\tNAME\tAPI URL\tAUTHENTICATED")
-	fmt.Fprintln(w, "-------\t----\t-------\t-------------")
+	_, _ = fmt.Fprintln(w, "CURRENT\tNAME\tAPI URL\tAUTHENTICATED")
+	_, _ = fmt.Fprintln(w, "-------\t----\t-------\t-------------")
 
 	for _, ctx := range cfg.Contexts {
 		current := " "
@@ -84,10 +84,10 @@ func runContextList(cmd *cobra.Command, args []string) error {
 			authenticated = "Yes"
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", current, ctx.Name, ctx.APIURL, authenticated)
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", current, ctx.Name, ctx.APIURL, authenticated)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	fmt.Println()
 
 	return nil

@@ -103,7 +103,7 @@ func BenchmarkNewProtocol_HTTP(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewProtocol(config)
+		_, _ = NewProtocol(config)
 	}
 }
 
@@ -117,6 +117,6 @@ func BenchmarkNewProtocol_TCP(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		NewProtocol(config)
+		_, _ = NewProtocol(config)
 	}
 }

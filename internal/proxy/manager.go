@@ -47,7 +47,7 @@ func (c *Connection) CloseAllStreams() {
 	c.streamsMu.Lock()
 	defer c.streamsMu.Unlock()
 	for conn := range c.activeStreams {
-		conn.Close()
+		_ = conn.Close()
 	}
 	c.activeStreams = make(map[net.Conn]bool)
 }
@@ -152,7 +152,7 @@ func (cm *ConnectionManager) CloseConnection(connectionID string) error {
 	}
 
 	if conn.Proxy != nil {
-		conn.Proxy.Close()
+		_ = conn.Proxy.Close()
 	}
 	delete(cm.connections, connectionID)
 
@@ -166,7 +166,7 @@ func (cm *ConnectionManager) CloseAll() {
 
 	for _, conn := range cm.connections {
 		if conn.Proxy != nil {
-			conn.Proxy.Close()
+			_ = conn.Proxy.Close()
 		}
 	}
 
@@ -186,7 +186,7 @@ func (cm *ConnectionManager) cleanupExpired() {
 
 				// Close the protocol handler (if not postgres)
 				if conn.Proxy != nil {
-					conn.Proxy.Close()
+					_ = conn.Proxy.Close()
 				}
 
 				// Remove from tracking

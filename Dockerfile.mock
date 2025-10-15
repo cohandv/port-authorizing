@@ -1,0 +1,36 @@
+# Multi-stage build for mock approval server
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /build
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY tools/mock-approval-server/ ./tools/mock-approval-server/
+
+# Build the binary
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o mock-approval-server ./tools/mock-approval-server
+
+# Final stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates wget
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /build/mock-approval-server .
+
+# Expose port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=5s --timeout=3s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:9000/health || exit 1
+
+# Run the binary
+ENTRYPOINT ["./mock-approval-server"]
+CMD ["-port=9000", "-api-url=http://api:8080", "-auto-approve=true", "-verbose=true"]
+

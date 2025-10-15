@@ -22,7 +22,7 @@ func TestNewHTTPProxyWithWhitelist(t *testing.T) {
 
 	whitelist := []string{"^GET /api/.*", "^POST /api/users"}
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	proxy := NewHTTPProxyWithWhitelist(cfg, whitelist, tmpFile.Name(), "testuser", "conn-123")
 
@@ -45,7 +45,7 @@ func TestNewHTTPProxyWithWhitelist(t *testing.T) {
 
 func TestHTTPProxy_isRequestAllowed(t *testing.T) {
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	tests := []struct {
 		name      string
@@ -187,7 +187,7 @@ func TestHTTPProxy_isRequestAllowed(t *testing.T) {
 
 func TestHTTPProxy_isRequestAllowed_InvalidRegex(t *testing.T) {
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	proxy := &HTTPProxy{
 		config: &config.ConnectionConfig{
@@ -224,12 +224,12 @@ func TestHTTPProxy_HandleRequest_WithWhitelist(t *testing.T) {
 	// Create a test HTTP server to act as backend
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"message":"success"}`))
+		_, _ = w.Write([]byte(`{"message":"success"}`))
 	}))
 	defer backend.Close()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Parse backend URL
 	backendHost := "localhost"
@@ -311,7 +311,7 @@ func TestHTTPProxy_HandleRequest_WithWhitelist(t *testing.T) {
 
 func BenchmarkHTTPProxy_isRequestAllowed(b *testing.B) {
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	proxy := &HTTPProxy{
 		config: &config.ConnectionConfig{
@@ -334,7 +334,7 @@ func BenchmarkHTTPProxy_isRequestAllowed(b *testing.B) {
 
 func BenchmarkHTTPProxy_isRequestAllowed_NoMatch(b *testing.B) {
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	proxy := &HTTPProxy{
 		config: &config.ConnectionConfig{

@@ -94,9 +94,9 @@ func TestManager_AddApprovalPattern(t *testing.T) {
 
 func TestManager_RequiresApproval(t *testing.T) {
 	mgr := NewManager(5 * time.Minute)
-	mgr.AddApprovalPattern("^DELETE /.*", nil, "", 3*time.Minute)
-	mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 10*time.Minute)
-	mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", 3*time.Minute)
+	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 10*time.Minute)
+	_ = mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", 5*time.Minute)
 
 	tests := []struct {
 		name           string
@@ -302,7 +302,7 @@ func TestManager_GetPendingRequest(t *testing.T) {
 
 	// Start approval request in goroutine
 	go func() {
-		mgr.RequestApproval(ctx, req, 30*time.Second)
+		_, _ = mgr.RequestApproval(ctx, req, 30*time.Second)
 	}()
 
 	// Wait for request to be registered
@@ -347,7 +347,7 @@ func TestManager_GetPendingRequestsCount(t *testing.T) {
 			Path:     "/api/users/1",
 		}
 		go func() {
-			mgr.RequestApproval(ctx, req, 30*time.Second)
+			_, _ = mgr.RequestApproval(ctx, req, 30*time.Second)
 		}()
 	}
 
@@ -379,9 +379,9 @@ func (m *mockProvider) GetProviderName() string {
 
 func BenchmarkManager_RequiresApproval(b *testing.B) {
 	mgr := NewManager(5 * time.Minute)
-	mgr.AddApprovalPattern("^DELETE /.*", nil, "", 5*time.Minute)
-	mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 5*time.Minute)
-	mgr.AddApprovalPattern("^PUT /api/users/.*", nil, "", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^PUT /api/users/.*", nil, "", 5*time.Minute)
 
 	tags := []string{"env:production"}
 

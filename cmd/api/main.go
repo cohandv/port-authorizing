@@ -41,5 +41,5 @@ func main() {
 	<-sigChan
 
 	log.Println("Shutting down gracefully...")
-	server.Shutdown()
+	_ = server.Shutdown()
 }

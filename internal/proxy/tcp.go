@@ -32,7 +32,7 @@ func (p *TCPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to target: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Read request body
 	body, err := io.ReadAll(r.Body)
@@ -53,7 +53,7 @@ func (p *TCPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error {
 
 	// Send response
 	w.WriteHeader(http.StatusOK)
-	w.Write(response)
+	_, _ = w.Write(response)
 
 	return nil
 }

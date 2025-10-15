@@ -31,9 +31,14 @@ func Log(logPath, username, action, resource string, metadata map[string]interfa
 	logFile, exists := logFiles[logPath]
 	if !exists {
 		var err error
-		logFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to open log file: %w", err)
+		// Support stdout as special case
+		if logPath == "stdout" || logPath == "-" {
+			logFile = os.Stdout
+		} else {
+			logFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open log file: %w", err)
+			}
 		}
 		logFiles[logPath] = logFile
 	}
@@ -67,7 +72,10 @@ func Close() {
 	defer mu.Unlock()
 
 	for _, file := range logFiles {
-		file.Close()
+		// Don't close stdout
+		if file != os.Stdout {
+			_ = file.Close()
+		}
 	}
 	logFiles = make(map[string]*os.File)
 }

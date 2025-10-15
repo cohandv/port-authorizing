@@ -34,7 +34,7 @@ func NewSimplePostgresProxy(cfg *config.ConnectionConfig, auditLogPath, username
 
 // HandleConnection handles a postgres connection with simple pass-through and query logging
 func (p *SimplePostgresProxy) HandleConnection(clientConn net.Conn) error {
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	// Connect to backend immediately
 	backendAddr := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
@@ -42,9 +42,9 @@ func (p *SimplePostgresProxy) HandleConnection(clientConn net.Conn) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to backend: %w", err)
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
-	audit.Log(p.auditLogPath, p.username, "postgres_connect", p.config.Name, map[string]interface{}{
+	_ = audit.Log(p.auditLogPath, p.username, "postgres_connect", p.config.Name, map[string]interface{}{
 		"connection_id": p.connectionID,
 		"backend":       backendAddr,
 	})
@@ -59,14 +59,14 @@ func (p *SimplePostgresProxy) HandleConnection(clientConn net.Conn) error {
 	// Client -> Backend (intercept and log queries)
 	go func() {
 		defer wg.Done()
-		defer backendConn.Close()
+		defer func() { _ = backendConn.Close() }()
 		p.proxyWithQueryLogging(ctx, clientConn, backendConn, true)
 	}()
 
 	// Backend -> Client (pass through)
 	go func() {
 		defer wg.Done()
-		defer clientConn.Close()
+		defer func() { _ = clientConn.Close() }()
 		p.proxyWithQueryLogging(ctx, backendConn, clientConn, false)
 	}()
 
@@ -89,7 +89,7 @@ func (p *SimplePostgresProxy) proxyWithQueryLogging(ctx context.Context, src, ds
 		}
 
 		// Set read deadline to allow context cancellation
-		src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_ = src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 
 		n, err := reader.Read(buf)
 		if err != nil {
@@ -97,7 +97,7 @@ func (p *SimplePostgresProxy) proxyWithQueryLogging(ctx context.Context, src, ds
 				continue // timeout, check context and try again
 			}
 			if err != io.EOF {
-				audit.Log(p.auditLogPath, p.username, "postgres_error", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "postgres_error", p.config.Name, map[string]interface{}{
 					"connection_id": p.connectionID,
 					"error":         err.Error(),
 					"log_queries":   logQueries,
@@ -145,7 +145,7 @@ func (p *SimplePostgresProxy) tryLogQuery(data []byte) {
 					query := string(bytes.TrimRight(queryBytes, "\x00"))
 
 					if query != "" {
-						audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
+						_ = audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
 							"connection_id": p.connectionID,
 							"query":         query,
 							"database":      p.config.BackendDatabase,

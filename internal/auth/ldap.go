@@ -103,7 +103,7 @@ func (p *LDAPProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to LDAP: %w", err)
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }()
 
 	// Bind as service account
 	err = l.Bind(p.bindDN, p.bindPassword)

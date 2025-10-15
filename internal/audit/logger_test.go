@@ -14,8 +14,8 @@ func TestLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Test logging
 	username := "testuser"
@@ -88,8 +88,8 @@ func TestLog_MultipleEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Log multiple entries
 	actions := []string{"login", "connect", "query", "disconnect"}
@@ -140,8 +140,8 @@ func TestLog_EmptyDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Log with nil metadata
 	if err := Log(tmpFile.Name(), "user", "action", "resource", nil); err != nil {
@@ -171,15 +171,15 @@ func TestClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file 1: %v", err)
 	}
-	defer os.Remove(tmpFile1.Name())
-	tmpFile1.Close()
+	defer func() { _ = os.Remove(tmpFile1.Name()) }()
+	_ = tmpFile1.Close()
 
 	tmpFile2, err := os.CreateTemp("", "audit-*.log")
 	if err != nil {
 		t.Fatalf("Failed to create temp file 2: %v", err)
 	}
-	defer os.Remove(tmpFile2.Name())
-	tmpFile2.Close()
+	defer func() { _ = os.Remove(tmpFile2.Name()) }()
+	_ = tmpFile2.Close()
 
 	// Log to multiple files
 	_ = Log(tmpFile1.Name(), "user1", "action1", "resource1", nil)
@@ -199,8 +199,8 @@ func TestLog_ReopenAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Log, close, log again
 	_ = Log(tmpFile.Name(), "user1", "action1", "resource1", nil)
@@ -225,8 +225,8 @@ func TestLog_ConcurrentWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Concurrent writes
 	done := make(chan bool)
@@ -261,8 +261,8 @@ func BenchmarkLog(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	details := map[string]interface{}{
 		"ip":     "127.0.0.1",
@@ -271,6 +271,6 @@ func BenchmarkLog(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Log(tmpFile.Name(), "user", "action", "target", details)
+		_ = Log(tmpFile.Name(), "user", "action", "target", details)
 	}
 }

@@ -78,7 +78,7 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	// For WebSocket requests or TCP connections, use WebSocket-based reverse tunnel
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_stream_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "proxy_stream_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 		"method":        r.Method,
 	})
@@ -86,18 +86,18 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP connection to WebSocket
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         err.Error(),
 		})
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Setup ping/pong to keep connection alive (send pong in response to ping from client)
-	wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	wsConn.SetPongHandler(func(string) error {
-		wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -105,19 +105,19 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	targetAddr := fmt.Sprintf("%s:%d", conn.Config.Host, conn.Config.Port)
 	targetConn, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "backend_connect_failed", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "backend_connect_failed", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"target":        targetAddr,
 			"error":         err.Error(),
 		})
-		wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to backend"))
+		_ = wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, "Failed to connect to backend"))
 		return
 	}
-	defer targetConn.Close()
+	defer func() { _ = targetConn.Close() }()
 
 	// Set deadline based on connection expiry
 	timeUntilExpiry := time.Until(conn.ExpiresAt)
-	targetConn.SetDeadline(conn.ExpiresAt)
+	_ = targetConn.SetDeadline(conn.ExpiresAt)
 
 	// Create capture buffers to record traffic (max 10KB per direction)
 	maxCaptureSize := 10 * 1024
@@ -188,8 +188,8 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	select {
 	case err1 := <-done:
 		// One direction finished, close connections
-		targetConn.Close()
-		wsConn.Close()
+		_ = targetConn.Close()
+		_ = wsConn.Close()
 
 		// Wait for the other goroutine to finish
 		<-done
@@ -208,9 +208,9 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		disconnectReason = "timeout"
 
 		// Close connections to terminate goroutines
-		targetConn.Close()
-		wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Connection expired"))
-		wsConn.Close()
+		_ = targetConn.Close()
+		_ = wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Connection expired"))
+		_ = wsConn.Close()
 
 		// Wait for both goroutines to finish
 		<-done
@@ -218,7 +218,7 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log session with captured traffic
-	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_session_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "proxy_session_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id":    connectionID,
 		"reason":           disconnectReason,
 		"request_size":     requestSize,
@@ -242,7 +242,7 @@ func (s *Server) handlePostgresWebSocket(w http.ResponseWriter, r *http.Request)
 	whitelist := s.authz.GetWhitelistForConnection(roles, conn.Config.Name)
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_connect_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id":   connectionID,
 		"method":          r.Method,
 		"roles":           roles,
@@ -252,18 +252,18 @@ func (s *Server) handlePostgresWebSocket(w http.ResponseWriter, r *http.Request)
 	// Upgrade HTTP connection to WebSocket
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         err.Error(),
 		})
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Setup ping/pong keepalive
-	wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	wsConn.SetPongHandler(func(string) error {
-		wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -290,20 +290,20 @@ func (s *Server) handlePostgresWebSocket(w http.ResponseWriter, r *http.Request)
 	}
 	defer func() {
 		// Safe close - won't panic if already closed
-		wsNetConn.Close()
+		_ = wsNetConn.Close()
 	}()
 
 	// Handle the Postgres protocol connection through WebSocket
 	if err := pgProxy.HandleConnection(wsNetConn); err != nil {
 		if err != io.EOF {
-			audit.Log(s.config.Logging.AuditLogPath, username, "postgres_error", conn.Config.Name, map[string]interface{}{
+			_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_error", conn.Config.Name, map[string]interface{}{
 				"connection_id": connectionID,
 				"error":         err.Error(),
 			})
 		}
 	}
 
-	audit.Log(s.config.Logging.AuditLogPath, username, "postgres_disconnect_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "postgres_disconnect_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 	})
 }
@@ -323,7 +323,7 @@ func (s *Server) handleHTTPWebSocket(w http.ResponseWriter, r *http.Request) {
 	whitelist := s.authz.GetWhitelistForConnection(roles, conn.Config.Name)
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "http_connect_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_connect_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id":   connectionID,
 		"method":          r.Method,
 		"roles":           roles,
@@ -333,25 +333,25 @@ func (s *Server) handleHTTPWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP connection to WebSocket
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "websocket_upgrade_failed", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         err.Error(),
 		})
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Setup ping/pong keepalive
-	wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	wsConn.SetPongHandler(func(string) error {
-		wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
 	// Create HTTP proxy with whitelist and approval support
 	httpProxy := conn.Proxy
 	if httpProxy == nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         "HTTP proxy not initialized",
 		})
@@ -367,21 +367,21 @@ func (s *Server) handleHTTPWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() {
 		// Safe close - won't panic if already closed
-		wsNetConn.Close()
+		_ = wsNetConn.Close()
 	}()
 
 	// Process HTTP requests from WebSocket stream
 	// Similar to handleHTTPProxyStream but over WebSocket
 	if err := s.handleHTTPOverWebSocket(wsNetConn, httpProxy, username, conn, connectionID); err != nil {
 		if err != io.EOF {
-			audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
+			_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
 				"connection_id": connectionID,
 				"error":         err.Error(),
 			})
 		}
 	}
 
-	audit.Log(s.config.Logging.AuditLogPath, username, "http_disconnect_websocket", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_disconnect_websocket", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 	})
 }
@@ -394,11 +394,8 @@ func (s *Server) handleHTTPOverWebSocket(wsNetConn *websocketConn, httpProxy pro
 	writer := bufio.NewWriter(wsNetConn)
 	bufrw := bufio.NewReadWriter(reader, writer)
 
-	for {
-		// Check if connection expired
-		if time.Now().After(conn.ExpiresAt) {
-			break
-		}
+	for time.Now().Before(conn.ExpiresAt) {
+		// Check if connection expired handled by loop condition
 
 		// Read HTTP request from WebSocket
 		requestBytes, err := readHTTPRequestFromStream(reader)
@@ -414,8 +411,8 @@ func (s *Server) handleHTTPOverWebSocket(wsNetConn *websocketConn, httpProxy pro
 		httpReq, err := http.ReadRequest(reqReader)
 		if err != nil {
 			// Send error response
-			writer.WriteString("HTTP/1.1 400 Bad Request\r\n\r\nInvalid HTTP request\r\n")
-			writer.Flush()
+			_, _ = writer.WriteString("HTTP/1.1 400 Bad Request\r\n\r\nInvalid HTTP request\r\n")
+			_ = writer.Flush()
 			break
 		}
 
@@ -431,7 +428,7 @@ func (s *Server) handleHTTPOverWebSocket(wsNetConn *websocketConn, httpProxy pro
 
 		// Call HTTP proxy's HandleRequest (this checks approval + whitelist)
 		err = httpProxy.HandleRequest(respWriter, proxyReq)
-		bufrw.Flush()
+		_ = bufrw.Flush()
 
 		if err != nil {
 			break
@@ -475,10 +472,10 @@ func readHTTPRequestFromStream(reader *bufio.Reader) ([]byte, error) {
 		lines := strings.Split(requestStr, "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "content-length:") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				var contentLength int
-				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					var contentLength int
+					_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
 
 					if contentLength > 0 {
 						body := make([]byte, contentLength)

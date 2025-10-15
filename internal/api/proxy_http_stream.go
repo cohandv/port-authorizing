@@ -43,7 +43,7 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "http_connect", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_connect", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 		"method":        r.Method,
 		"roles":         roles,
@@ -61,15 +61,15 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to hijack connection: %v", err))
 		return
 	}
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	// Register this stream with the connection for timeout enforcement
 	conn.RegisterStream(clientConn)
 	defer conn.UnregisterStream(clientConn)
 
 	// Send HTTP 200 response to indicate proxy is ready
-	fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n")
-	bufrw.Flush()
+	_, _ = fmt.Fprintf(bufrw, "HTTP/1.1 200 Connection Established\r\n\r\n")
+	_ = bufrw.Flush()
 
 	// Set deadline based on connection expiry
 	_ = clientConn.SetDeadline(conn.ExpiresAt)
@@ -77,7 +77,7 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 	// Use the HTTP proxy instance from connection (which has approval support)
 	httpProxy := conn.Proxy
 	if httpProxy == nil {
-		audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_error", conn.Config.Name, map[string]interface{}{
 			"connection_id": connectionID,
 			"error":         "HTTP proxy not initialized",
 		})
@@ -87,17 +87,14 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 	// Process HTTP requests in a loop
 	reader := bufio.NewReader(bufrw)
 
-	for {
-		// Check if connection expired
-		if time.Now().After(conn.ExpiresAt) {
-			break
-		}
+	for time.Now().Before(conn.ExpiresAt) {
+		// Check if connection expired handled by loop condition
 
 		// Read HTTP request from client
 		requestBytes, err := readHTTPRequest(reader)
 		if err != nil {
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed") {
-				audit.Log(s.config.Logging.AuditLogPath, username, "http_read_error", conn.Config.Name, map[string]interface{}{
+				_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_read_error", conn.Config.Name, map[string]interface{}{
 					"connection_id": connectionID,
 					"error":         err.Error(),
 				})
@@ -109,13 +106,13 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 		reqReader := bufio.NewReader(bytes.NewReader(requestBytes))
 		httpReq, err := http.ReadRequest(reqReader)
 		if err != nil {
-			audit.Log(s.config.Logging.AuditLogPath, username, "http_parse_error", conn.Config.Name, map[string]interface{}{
+			_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_parse_error", conn.Config.Name, map[string]interface{}{
 				"connection_id": connectionID,
 				"error":         err.Error(),
 			})
 			// Send error response to client
-			fmt.Fprintf(bufrw, "HTTP/1.1 400 Bad Request\r\n\r\nInvalid HTTP request\r\n")
-			bufrw.Flush()
+			_, _ = fmt.Fprintf(bufrw, "HTTP/1.1 400 Bad Request\r\n\r\nInvalid HTTP request\r\n")
+			_ = bufrw.Flush()
 			break
 		}
 
@@ -135,13 +132,13 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 		err = httpProxy.HandleRequest(respWriter, proxyReq)
 
 		// CRITICAL: Flush the response back to the client!
-		bufrw.Flush()
+		_ = bufrw.Flush()
 
 		if err != nil {
 			// Error response was already sent by HandleRequest
 			// Check if it was a 403 (blocked/rejected)
 			if respWriter.statusCode == http.StatusForbidden {
-				audit.Log(s.config.Logging.AuditLogPath, username, "http_request_blocked", conn.Config.Name, map[string]interface{}{
+				_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_request_blocked", conn.Config.Name, map[string]interface{}{
 					"connection_id": connectionID,
 					"method":        httpReq.Method,
 					"path":          httpReq.URL.Path,
@@ -157,7 +154,7 @@ func (s *Server) handleHTTPProxyStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	audit.Log(s.config.Logging.AuditLogPath, username, "http_disconnect", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "http_disconnect", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 	})
 }
@@ -193,10 +190,10 @@ func readHTTPRequest(reader *bufio.Reader) ([]byte, error) {
 		lines := strings.Split(requestStr, "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "content-length:") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				var contentLength int
-				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					var contentLength int
+					_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &contentLength)
 
 					if contentLength > 0 {
 						// Read body
@@ -247,18 +244,18 @@ func (w *streamResponseWriter) WriteHeader(statusCode int) {
 	if statusText == "" {
 		statusText = "Unknown"
 	}
-	fmt.Fprintf(w.writer, "HTTP/1.1 %d %s\r\n", statusCode, statusText)
+	_, _ = fmt.Fprintf(w.writer, "HTTP/1.1 %d %s\r\n", statusCode, statusText)
 
 	// Write headers
 	for key, values := range w.header {
 		for _, value := range values {
-			fmt.Fprintf(w.writer, "%s: %s\r\n", key, value)
+			_, _ = fmt.Fprintf(w.writer, "%s: %s\r\n", key, value)
 		}
 	}
 
 	// End headers
-	fmt.Fprint(w.writer, "\r\n")
-	w.writer.Flush()
+	_, _ = fmt.Fprint(w.writer, "\r\n")
+	_ = w.writer.Flush()
 }
 
 // Implement http.Hijacker interface (needed by some handlers)

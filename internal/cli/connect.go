@@ -32,7 +32,7 @@ var (
 
 func init() {
 	connectCmd.Flags().IntVarP(&localPort, "local-port", "l", 0, "Local port to listen on (required)")
-	connectCmd.MarkFlagRequired("local-port")
+	_ = connectCmd.MarkFlagRequired("local-port")
 }
 
 type connectResponse struct {
@@ -78,7 +78,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -132,7 +132,7 @@ func startLocalProxy(port int, connectionID, token string, expiresAt string, api
 	if err != nil {
 		return fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	fmt.Printf("✓ Proxy server listening on localhost:%d\n", port)
 	fmt.Printf("Connection will expire at: %s\n", expiresAt)
@@ -190,7 +190,7 @@ func startLocalProxy(port int, connectionID, token string, expiresAt string, api
 }
 
 func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL string) {
-	defer localConn.Close()
+	defer func() { _ = localConn.Close() }()
 
 	// Convert HTTP URL to WebSocket URL
 	wsURL := strings.Replace(apiURL, "http://", "ws://", 1)
@@ -222,12 +222,12 @@ func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL strin
 		}
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Setup ping/pong to keep connection alive (prevent ALB timeout)
-	wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	wsConn.SetPongHandler(func(string) error {
-		wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = wsConn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 

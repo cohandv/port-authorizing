@@ -46,7 +46,7 @@ func (s *Server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	// Return success page or JSON based on Accept header
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":      "approved",
 			"request_id":  requestID,
 			"approved_by": approver,
@@ -54,7 +54,7 @@ func (s *Server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Return HTML success page
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+		_, _ = fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
@@ -116,7 +116,7 @@ func (s *Server) handleRejectRequest(w http.ResponseWriter, r *http.Request) {
 	// Return success page or JSON
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":      "rejected",
 			"request_id":  requestID,
 			"rejected_by": approver,
@@ -124,7 +124,7 @@ func (s *Server) handleRejectRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Return HTML success page
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+		_, _ = fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
 <head>
@@ -155,7 +155,7 @@ func (s *Server) handleGetPendingApprovals(w http.ResponseWriter, r *http.Reques
 	count := s.approvalMgr.GetPendingRequestsCount()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"pending_count": count,
 	})
 }

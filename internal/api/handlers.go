@@ -39,7 +39,7 @@ func (s *Server) handleListConnections(w http.ResponseWriter, r *http.Request) {
 	roles, _ := r.Context().Value(ContextKeyRoles).([]string)
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "list_connections", "", map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "list_connections", "", map[string]interface{}{
 		"roles": roles,
 	})
 
@@ -100,7 +100,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	// Check authorization
 	if !s.authz.CanAccessConnection(roles, connectionName) {
-		audit.Log(s.config.Logging.AuditLogPath, username, "connect_denied", connectionName, map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, username, "connect_denied", connectionName, map[string]interface{}{
 			"roles":  roles,
 			"reason": "insufficient permissions",
 		})
@@ -130,7 +130,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "connect", connectionName, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "connect", connectionName, map[string]interface{}{
 		"connection_id": connectionID,
 		"duration":      duration.String(),
 		"roles":         roles,
@@ -155,6 +155,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleProxy handles proxying requests to the actual endpoint
+//
 //nolint:unused // Reserved for legacy HTTP proxy support
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	username := r.Context().Value(ContextKeyUsername).(string)
@@ -175,7 +176,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log audit event
-	audit.Log(s.config.Logging.AuditLogPath, username, "proxy_request", conn.Config.Name, map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, username, "proxy_request", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,
 		"method":        r.Method,
 		"path":          r.URL.Path,
@@ -192,7 +193,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // respondError sends an error response

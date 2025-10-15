@@ -50,12 +50,12 @@ logging:
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.WriteString(yamlContent); err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	tmpFile.Close()
+	_  = tmpFile.Close()
 
 	// Test loading the config
 	cfg, err := LoadConfig(tmpFile.Name())
@@ -121,13 +121,13 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	// Write invalid YAML
 	if _, err := tmpFile.WriteString("invalid: yaml: content: [[["); err != nil {
 		t.Fatalf("Failed to write to temp file: %v", err)
 	}
-	tmpFile.Close()
+	_  = tmpFile.Close()
 
 	_, err = LoadConfig(tmpFile.Name())
 	if err == nil {

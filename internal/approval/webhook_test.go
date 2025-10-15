@@ -141,6 +141,6 @@ func BenchmarkWebhookProvider_SendApprovalRequest(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		provider.SendApprovalRequest(ctx, req)
+		_ = provider.SendApprovalRequest(ctx, req)
 	}
 }

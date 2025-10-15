@@ -52,7 +52,7 @@ func (p *PostgresAuthProxy) SetApprovalManager(mgr *approval.Manager) {
 
 // HandleConnection handles the full postgres connection with auth
 func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
-	defer clientConn.Close()
+	defer func() { _ = clientConn.Close() }()
 
 	// Read startup message from client (might be SSL request first)
 	startupMsg, err := p.readStartupMessage(clientConn)
@@ -65,7 +65,7 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		protocol := binary.BigEndian.Uint32(startupMsg[4:8])
 		if protocol == 80877103 {
 			// Reject SSL - send 'N'
-			clientConn.Write([]byte{'N'})
+			_, _ = clientConn.Write([]byte{'N'})
 
 			// Now read the real startup message
 			startupMsg, err = p.readStartupMessage(clientConn)
@@ -93,7 +93,7 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 	// SECURITY: Enforce that psql username matches authenticated API username
 	if clientUser != p.username {
 		p.sendAuthError(clientConn, "Username mismatch: you must connect as your authenticated user")
-		audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
+		_ = audit.Log(p.auditLogPath, p.username, "postgres_auth_failed", p.config.Name, map[string]interface{}{
 			"connection_id": p.connectionID,
 			"client_user":   clientUser,
 			"expected_user": p.username,
@@ -106,7 +106,7 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 	// The connection was established with a valid JWT token, so the user is already authenticated.
 	// We accept any password here since the real authentication is the JWT token.
 	// This allows OIDC/SAML users (who don't have local passwords) to connect.
-	audit.Log(p.auditLogPath, p.username, "postgres_client_auth", p.config.Name, map[string]interface{}{
+	_ = audit.Log(p.auditLogPath, p.username, "postgres_client_auth", p.config.Name, map[string]interface{}{
 		"connection_id": p.connectionID,
 		"client_user":   clientUser,
 		"note":          "password validation skipped - already authenticated via JWT",
@@ -119,7 +119,7 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		p.sendAuthError(clientConn, "Backend connection failed")
 		return fmt.Errorf("failed to connect to backend: %w", err)
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
 	// Send startup to backend with BACKEND username
 	backendDB := p.config.BackendDatabase
@@ -141,7 +141,7 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		return err
 	}
 
-	audit.Log(p.auditLogPath, p.username, "postgres_auth", p.config.Name, map[string]interface{}{
+	_ = audit.Log(p.auditLogPath, p.username, "postgres_auth", p.config.Name, map[string]interface{}{
 		"connection_id": p.connectionID,
 		"client_user":   clientUser,
 		"database":      database,
@@ -154,13 +154,13 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 
 	go func() {
 		defer wg.Done()
-		defer backendConn.Close()
+		defer func() { _ = backendConn.Close() }()
 		p.forwardWithLogging(clientConn, backendConn, true)
 	}()
 
 	go func() {
 		defer wg.Done()
-		defer clientConn.Close()
+		defer func() { _ = clientConn.Close() }()
 		p.forwardWithLogging(backendConn, clientConn, false)
 	}()
 
@@ -277,7 +277,7 @@ func (p *PostgresAuthProxy) sendBackendStartup(conn net.Conn, username, database
 	var buf bytes.Buffer
 
 	// Protocol version 3.0
-	binary.Write(&buf, binary.BigEndian, uint32(196608))
+	_ = binary.Write(&buf, binary.BigEndian, uint32(196608))
 
 	// Parameters
 	buf.WriteString("user")
@@ -331,14 +331,15 @@ func (p *PostgresAuthProxy) handleBackendAuth(conn net.Conn, password string) er
 		case 'R': // Authentication request
 			if len(body) >= 4 {
 				authType := binary.BigEndian.Uint32(body[:4])
-				if authType == 0 {
+				switch authType {
+				case 0:
 					// Auth OK, continue
-				} else if authType == 3 {
+				case 3:
 					// Cleartext password requested
 					if err := p.sendBackendPassword(conn, password); err != nil {
 						return err
 					}
-				} else if authType == 5 {
+				case 5:
 					// MD5 password requested
 					if len(body) < 8 {
 						return fmt.Errorf("invalid MD5 auth message")
@@ -347,12 +348,12 @@ func (p *PostgresAuthProxy) handleBackendAuth(conn net.Conn, password string) er
 					if err := p.sendBackendPasswordMD5(conn, password, p.config.BackendUsername, salt); err != nil {
 						return err
 					}
-				} else if authType == 10 {
+				case 10:
 					// SCRAM-SHA-256 requested
 					if err := p.handleSCRAMAuth(conn, reader, password, p.config.BackendUsername); err != nil {
 						return err
 					}
-				} else {
+				default:
 					return fmt.Errorf("unsupported auth type: %d", authType)
 				}
 			}
@@ -373,8 +374,8 @@ func (p *PostgresAuthProxy) handleBackendAuth(conn net.Conn, password string) er
 // sendBackendPassword sends password to backend
 func (p *PostgresAuthProxy) sendBackendPassword(conn net.Conn, password string) error {
 	var buf bytes.Buffer
-	buf.WriteByte('p')                                            // Message type
-	binary.Write(&buf, binary.BigEndian, uint32(len(password)+5)) // Length
+	buf.WriteByte('p')                                                // Message type
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(password)+5)) // Length
 	buf.WriteString(password)
 	buf.WriteByte(0)
 
@@ -402,8 +403,8 @@ func (p *PostgresAuthProxy) sendBackendPasswordMD5(conn net.Conn, password, user
 	finalHash := "md5" + hash2
 
 	var buf bytes.Buffer
-	buf.WriteByte('p')                                             // Message type
-	binary.Write(&buf, binary.BigEndian, uint32(len(finalHash)+5)) // Length
+	buf.WriteByte('p')                                                 // Message type
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(finalHash)+5)) // Length
 	buf.WriteString(finalHash)
 	buf.WriteByte(0)
 
@@ -436,10 +437,10 @@ func (p *PostgresAuthProxy) handleSCRAMAuth(conn net.Conn, reader *bufio.Reader,
 	// Length = 4 (length itself) + len(mechanism) + 1 (null) + 4 (clientFirst length) + len(clientFirst)
 	totalLen := 4 + len(mechanism) + 1 + 4 + len(clientFirst)
 
-	binary.Write(&buf, binary.BigEndian, int32(totalLen))
+	_ = binary.Write(&buf, binary.BigEndian, int32(totalLen))
 	buf.WriteString(mechanism)
 	buf.WriteByte(0) // Null terminator
-	binary.Write(&buf, binary.BigEndian, int32(len(clientFirst)))
+	_ = binary.Write(&buf, binary.BigEndian, int32(len(clientFirst)))
 	buf.WriteString(clientFirst)
 
 	if _, err := conn.Write(buf.Bytes()); err != nil {
@@ -488,7 +489,7 @@ func (p *PostgresAuthProxy) handleSCRAMAuth(conn net.Conn, reader *bufio.Reader,
 	// Send client-final-message
 	buf.Reset()
 	buf.WriteByte('p')
-	binary.Write(&buf, binary.BigEndian, uint32(len(clientFinal)+4))
+	_ = binary.Write(&buf, binary.BigEndian, uint32(len(clientFinal)+4))
 	buf.WriteString(clientFinal)
 
 	if _, err := conn.Write(buf.Bytes()); err != nil {
@@ -540,8 +541,8 @@ func (p *PostgresAuthProxy) sendAuthSuccess(conn net.Conn) error {
 
 	// AuthenticationOk
 	buf.WriteByte('R')
-	binary.Write(&buf, binary.BigEndian, int32(8))
-	binary.Write(&buf, binary.BigEndian, int32(0))
+	_ = binary.Write(&buf, binary.BigEndian, int32(8))
+	_ = binary.Write(&buf, binary.BigEndian, int32(0))
 
 	// ParameterStatus messages
 	params := map[string]string{
@@ -555,19 +556,19 @@ func (p *PostgresAuthProxy) sendAuthSuccess(conn net.Conn) error {
 	for key, value := range params {
 		buf.WriteByte('S')
 		paramData := key + "\x00" + value + "\x00"
-		binary.Write(&buf, binary.BigEndian, int32(len(paramData)+4))
+		_ = binary.Write(&buf, binary.BigEndian, int32(len(paramData)+4))
 		buf.WriteString(paramData)
 	}
 
 	// BackendKeyData (dummy)
 	buf.WriteByte('K')
-	binary.Write(&buf, binary.BigEndian, int32(12))
-	binary.Write(&buf, binary.BigEndian, int32(12345)) // process ID
-	binary.Write(&buf, binary.BigEndian, int32(67890)) // secret key
+	_ = binary.Write(&buf, binary.BigEndian, int32(12))
+	_ = binary.Write(&buf, binary.BigEndian, int32(12345)) // process ID
+	_ = binary.Write(&buf, binary.BigEndian, int32(67890)) // secret key
 
 	// ReadyForQuery
 	buf.WriteByte('Z')
-	binary.Write(&buf, binary.BigEndian, int32(5))
+	_ = binary.Write(&buf, binary.BigEndian, int32(5))
 	buf.WriteByte('I') // Idle status
 
 	_, err := conn.Write(buf.Bytes())
@@ -594,6 +595,7 @@ func (p *PostgresAuthProxy) sendAuthError(conn net.Conn, message string) {
 }
 
 // validateAPICredentials checks API username/password
+//
 //nolint:unused // Reserved for future API credential validation
 func (p *PostgresAuthProxy) validateAPICredentials(username, password string) bool {
 	if p.apiConfig == nil {
@@ -648,12 +650,13 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 
 			if i+1+length <= len(data) && length > 4 {
 				var query string
-				
-				if msgType == 'Q' {
+
+				switch msgType {
+				case 'Q':
 					// Simple Query: query string starts at i+5
 					queryBytes := data[i+5 : i+1+length]
 					query = string(bytes.TrimRight(queryBytes, "\x00"))
-				} else if msgType == 'P' {
+				case 'P':
 					// Parse message: format is statement_name (null-terminated) + query (null-terminated)
 					// Skip statement name to get to query
 					nameStart := i + 5
@@ -673,7 +676,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 					allowed := p.isQueryAllowed(query)
 
 					// Log the query with whitelist result
-					audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
+					_ = audit.Log(p.auditLogPath, p.username, "postgres_query", p.config.Name, map[string]interface{}{
 						"connection_id": p.connectionID,
 						"query":         query,
 						"database":      p.config.BackendDatabase,
@@ -684,7 +687,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 
 					if !allowed {
 						// Log blocked query
-						audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
+						_ = audit.Log(p.auditLogPath, p.username, "postgres_query_blocked", p.config.Name, map[string]interface{}{
 							"connection_id": p.connectionID,
 							"query":         query,
 							"reason":        "whitelist_violation",
@@ -711,7 +714,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 							}
 
 							// Log approval request
-							audit.Log(p.auditLogPath, p.username, "postgres_approval_requested", p.config.Name, map[string]interface{}{
+							_ = audit.Log(p.auditLogPath, p.username, "postgres_approval_requested", p.config.Name, map[string]interface{}{
 								"connection_id": p.connectionID,
 								"query":         query,
 								"database":      p.config.BackendDatabase,
@@ -725,7 +728,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 							approvalResp, err := p.approvalMgr.RequestApproval(ctx, approvalReq, timeout)
 							if err != nil {
 								// Log approval error
-								audit.Log(p.auditLogPath, p.username, "postgres_approval_error", p.config.Name, map[string]interface{}{
+								_ = audit.Log(p.auditLogPath, p.username, "postgres_approval_error", p.config.Name, map[string]interface{}{
 									"connection_id": p.connectionID,
 									"query":         query,
 									"error":         err.Error(),
@@ -736,7 +739,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 							// Check approval decision
 							if approvalResp.Decision != approval.DecisionApproved {
 								// Log rejection/timeout
-								audit.Log(p.auditLogPath, p.username, "postgres_approval_rejected", p.config.Name, map[string]interface{}{
+								_ = audit.Log(p.auditLogPath, p.username, "postgres_approval_rejected", p.config.Name, map[string]interface{}{
 									"connection_id": p.connectionID,
 									"query":         query,
 									"decision":      approvalResp.Decision,
@@ -747,7 +750,7 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 							}
 
 							// Log approval success
-							audit.Log(p.auditLogPath, p.username, "postgres_approval_granted", p.config.Name, map[string]interface{}{
+							_ = audit.Log(p.auditLogPath, p.username, "postgres_approval_granted", p.config.Name, map[string]interface{}{
 								"connection_id": p.connectionID,
 								"query":         query,
 								"database":      p.config.BackendDatabase,
@@ -777,7 +780,7 @@ func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 		re, err := regexp.Compile("(?i)" + pattern)
 		if err != nil {
 			// Log bad pattern but don't block
-			audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
+			_ = audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
 				"connection_id": p.connectionID,
 				"pattern":       pattern,
 				"error":         err.Error(),
@@ -817,7 +820,7 @@ func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
 
 	// Write message length (includes the length field itself)
 	msgLength := uint32(4 + fields.Len())
-	binary.Write(&buf, binary.BigEndian, msgLength)
+	_ = binary.Write(&buf, binary.BigEndian, msgLength)
 
 	// Write fields
 	buf.Write(fields.Bytes())
@@ -828,9 +831,9 @@ func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
 	// Now send ReadyForQuery to indicate we're ready for next command
 	// This prevents client from hanging
 	var readyBuf bytes.Buffer
-	readyBuf.WriteByte('Z')                             // ReadyForQuery message type
-	binary.Write(&readyBuf, binary.BigEndian, int32(5)) // Length
-	readyBuf.WriteByte('I')                             // Transaction status: Idle
+	readyBuf.WriteByte('Z')                                 // ReadyForQuery message type
+	_ = binary.Write(&readyBuf, binary.BigEndian, int32(5)) // Length
+	readyBuf.WriteByte('I')                                 // Transaction status: Idle
 
-	conn.Write(readyBuf.Bytes())
+	_, _ = conn.Write(readyBuf.Bytes())
 }

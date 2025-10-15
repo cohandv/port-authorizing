@@ -152,7 +152,7 @@ func TestRespondError_EmptyMessage(t *testing.T) {
 	respondError(w, http.StatusBadRequest, "")
 
 	var response map[string]string
-	json.NewDecoder(w.Body).Decode(&response)
+	_ = json.NewDecoder(w.Body).Decode(&response)
 
 	if response["error"] != "" {
 		t.Errorf("Empty error message should be preserved, got %s", response["error"])

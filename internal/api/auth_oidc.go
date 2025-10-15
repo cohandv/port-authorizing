@@ -146,7 +146,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	redirectURL := s.config.Auth.Providers[0].Config["redirect_url"]
 	userInfo, err := oidcProvider.ExchangeCodeForToken(code, redirectURL)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, "unknown", "oidc_token_exchange_failed", "oidc", map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, "unknown", "oidc_token_exchange_failed", "oidc", map[string]interface{}{
 			"error": err.Error(),
 		})
 		http.Error(w, fmt.Sprintf("Failed to exchange token: %v", err), http.StatusInternalServerError)
@@ -156,7 +156,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	// Generate our JWT token
 	token, expiresAt, err := s.authSvc.generateToken(userInfo)
 	if err != nil {
-		audit.Log(s.config.Logging.AuditLogPath, userInfo.Username, "jwt_generation_failed", "oidc", map[string]interface{}{
+		_ = audit.Log(s.config.Logging.AuditLogPath, userInfo.Username, "jwt_generation_failed", "oidc", map[string]interface{}{
 			"error": err.Error(),
 		})
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
@@ -164,7 +164,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log successful OIDC login
-	audit.Log(s.config.Logging.AuditLogPath, userInfo.Username, "oidc_login_success", "oidc", map[string]interface{}{
+	_ = audit.Log(s.config.Logging.AuditLogPath, userInfo.Username, "oidc_login_success", "oidc", map[string]interface{}{
 		"email": userInfo.Email,
 		"roles": userInfo.Roles,
 	})

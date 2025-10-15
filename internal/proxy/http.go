@@ -91,7 +91,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 		// Log OPTIONS request
 		if p.auditLogPath != "" {
-			audit.Log(p.auditLogPath, p.username, "http_preflight", p.config.Name, map[string]interface{}{
+			_ = audit.Log(p.auditLogPath, p.username, "http_preflight", p.config.Name, map[string]interface{}{
 				"connection_id": p.connectionID,
 				"method":        method,
 				"path":          path,
@@ -106,7 +106,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 		if !p.isRequestAllowed(requestPattern) {
 			// Log blocked request
 			if p.auditLogPath != "" {
-				audit.Log(p.auditLogPath, p.username, "http_request_blocked", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "http_request_blocked", p.config.Name, map[string]interface{}{
 					"connection_id": p.connectionID,
 					"method":        method,
 					"path":          path,
@@ -121,13 +121,13 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 			// Return 403 Forbidden
 			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(`{"error":"Request blocked by security policy","message":"This HTTP request is not allowed by the whitelist"}`))
+			_, _ = w.Write([]byte(`{"error":"Request blocked by security policy","message":"This HTTP request is not allowed by the whitelist"}`))
 			return fmt.Errorf("request blocked by whitelist: %s %s", method, path)
 		}
 
 		// Log allowed request
 		if p.auditLogPath != "" {
-			audit.Log(p.auditLogPath, p.username, "http_request", p.config.Name, map[string]interface{}{
+			_ = audit.Log(p.auditLogPath, p.username, "http_request", p.config.Name, map[string]interface{}{
 				"connection_id": p.connectionID,
 				"method":        method,
 				"path":          path,
@@ -154,7 +154,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 			// Log approval request
 			if p.auditLogPath != "" {
-				audit.Log(p.auditLogPath, p.username, "http_approval_requested", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "http_approval_requested", p.config.Name, map[string]interface{}{
 					"connection_id": p.connectionID,
 					"method":        method,
 					"path":          path,
@@ -174,7 +174,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
 
 				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(fmt.Sprintf(`{"error":"Approval request failed","message":"%s"}`, err.Error())))
+				_, _ = fmt.Fprintf(w, `{"error":"Approval request failed","message":"%s"}`, err.Error())
 				return fmt.Errorf("approval request failed: %w", err)
 			}
 
@@ -182,7 +182,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 			if approvalResp.Decision != approval.DecisionApproved {
 				// Log rejection/timeout
 				if p.auditLogPath != "" {
-					audit.Log(p.auditLogPath, p.username, "http_approval_rejected", p.config.Name, map[string]interface{}{
+					_ = audit.Log(p.auditLogPath, p.username, "http_approval_rejected", p.config.Name, map[string]interface{}{
 						"connection_id": p.connectionID,
 						"method":        method,
 						"path":          path,
@@ -198,13 +198,13 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
 
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(fmt.Sprintf(`{"error":"Request not approved","message":"Approval decision: %s - %s"}`, approvalResp.Decision, approvalResp.Reason)))
+				_, _ = fmt.Fprintf(w, `{"error":"Request not approved","message":"Approval decision: %s - %s"}`, approvalResp.Decision, approvalResp.Reason)
 				return fmt.Errorf("request not approved: %s", approvalResp.Decision)
 			}
 
 			// Log approval success
 			if p.auditLogPath != "" {
-				audit.Log(p.auditLogPath, p.username, "http_approval_granted", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "http_approval_granted", p.config.Name, map[string]interface{}{
 					"connection_id": p.connectionID,
 					"method":        method,
 					"path":          path,
@@ -268,7 +268,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return fmt.Errorf("failed to execute proxy request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Add CORS headers (allow all origins for proxied connections)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -320,7 +320,7 @@ func (p *HTTPProxy) isRequestAllowed(request string) bool {
 		if err != nil {
 			// Log error and skip this pattern
 			if p.auditLogPath != "" {
-				audit.Log(p.auditLogPath, p.username, "http_whitelist_error", p.config.Name, map[string]interface{}{
+				_ = audit.Log(p.auditLogPath, p.username, "http_whitelist_error", p.config.Name, map[string]interface{}{
 					"pattern": pattern,
 					"error":   err.Error(),
 				})

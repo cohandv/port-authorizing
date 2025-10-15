@@ -22,7 +22,7 @@ func TestRunLogin_Success(t *testing.T) {
 			response.User.Username = "admin"
 			response.User.Roles = []string{"admin"}
 
-			json.NewEncoder(w).Encode(response)
+			_ = json.NewEncoder(w).Encode(response)
 		}
 	}))
 	defer server.Close()
@@ -30,8 +30,8 @@ func TestRunLogin_Success(t *testing.T) {
 	// Setup temp HOME
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Create root command with flags
 	rootCmd := &cobra.Command{}
@@ -74,7 +74,7 @@ func TestRunLogin_Success(t *testing.T) {
 func TestRunLogin_InvalidCredentials(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error": "Invalid credentials",
 		})
 	}))
@@ -82,8 +82,8 @@ func TestRunLogin_InvalidCredentials(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -143,15 +143,15 @@ func TestRunList_Success(t *testing.T) {
 				{Name: "test-db", Type: "postgres"},
 				{Name: "api-server", Type: "http"},
 			}
-			json.NewEncoder(w).Encode(connections)
+			_ = json.NewEncoder(w).Encode(connections)
 		}
 	}))
 	defer server.Close()
 
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Create a context with token
 	ctx := Context{
@@ -159,7 +159,7 @@ func TestRunList_Success(t *testing.T) {
 		APIURL: server.URL,
 		Token:  "valid-token",
 	}
-	SaveContext(ctx, true)
+	_ = SaveContext(ctx, true)
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -185,8 +185,8 @@ func TestRunList_Success(t *testing.T) {
 func TestRunList_NoToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", "http://localhost:8080", "")
@@ -208,7 +208,7 @@ func TestRunList_NoToken(t *testing.T) {
 func TestRunList_Unauthorized(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"error": "Unauthorized",
 		})
 	}))
@@ -216,8 +216,8 @@ func TestRunList_Unauthorized(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Create context with invalid token
 	ctx := Context{
@@ -225,7 +225,7 @@ func TestRunList_Unauthorized(t *testing.T) {
 		APIURL: server.URL,
 		Token:  "invalid-token",
 	}
-	SaveContext(ctx, true)
+	_ = SaveContext(ctx, true)
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -247,8 +247,8 @@ func TestRunList_Unauthorized(t *testing.T) {
 func TestRunConnect_NoToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", "http://localhost:8080", "")
@@ -274,11 +274,11 @@ func TestRunConnect_NoToken(t *testing.T) {
 func TestRunConnect_InvalidToken(t *testing.T) {
 	tmpDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Save invalid token
-	saveToken("invalid-token")
+	_ = saveToken("invalid-token")
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", "http://localhost:8080", "")
@@ -308,14 +308,14 @@ func BenchmarkRunLogin(b *testing.B) {
 			ExpiresAt: "2025-12-31T23:59:59Z",
 		}
 		response.User.Username = "admin"
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
 	tmpDir := b.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -335,7 +335,7 @@ func BenchmarkRunLogin(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		loginCmd.RunE(loginCmd, []string{})
+		_ = loginCmd.RunE(loginCmd, []string{})
 	}
 }
 
@@ -344,16 +344,16 @@ func BenchmarkRunList(b *testing.B) {
 		connections := []connectionInfo{
 			{Name: "test-db", Type: "postgres"},
 		}
-		json.NewEncoder(w).Encode(connections)
+		_ = json.NewEncoder(w).Encode(connections)
 	}))
 	defer server.Close()
 
 	tmpDir := b.TempDir()
 	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", oldHome)
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
-	saveToken("valid-token")
+	_ = saveToken("valid-token")
 
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", server.URL, "")
@@ -367,6 +367,6 @@ func BenchmarkRunList(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		listCmd.RunE(listCmd, []string{})
+		_ = listCmd.RunE(listCmd, []string{})
 	}
 }

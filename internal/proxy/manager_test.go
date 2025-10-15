@@ -38,7 +38,7 @@ func TestConnectionManager_CreateConnection(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -160,7 +160,7 @@ func TestConnectionManager_GetConnection(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -227,7 +227,7 @@ func TestConnectionManager_CloseConnection(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -280,7 +280,7 @@ func TestConnectionManager_GetActiveConnections(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -328,7 +328,7 @@ func TestConnectionManager_CloseAll(t *testing.T) {
 	cm := NewConnectionManager(1 * time.Hour)
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -386,8 +386,8 @@ func TestConnection_RegisterStream(t *testing.T) {
 
 	// Create mock net.Conn (using a pipe)
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
 
 	// Register stream
 	conn.RegisterStream(client)
@@ -407,8 +407,8 @@ func TestConnection_UnregisterStream(t *testing.T) {
 	}
 
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
+	defer func() { _ = client.Close() }()
+	defer func() { _ = server.Close() }()
 
 	// Register then unregister
 	conn.RegisterStream(client)
@@ -432,7 +432,7 @@ func TestConnection_CloseAllStreams(t *testing.T) {
 	streams := make([]net.Conn, 3)
 	for i := 0; i < 3; i++ {
 		client, server := net.Pipe()
-		defer server.Close()
+		defer func() { _ = server.Close() }()
 		streams[i] = client
 		conn.RegisterStream(client)
 	}
@@ -454,7 +454,7 @@ func TestConnectionManager_ExpiredConnections(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -492,7 +492,7 @@ func BenchmarkConnectionManager_CreateConnection(b *testing.B) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -506,7 +506,7 @@ func BenchmarkConnectionManager_CreateConnection(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cm.CreateConnection("testuser", connConfig, 10*time.Minute, whitelist, tmpFile.Name(), nil)
+		_, _, _ = cm.CreateConnection("testuser", connConfig, 10*time.Minute, whitelist, tmpFile.Name(), nil)
 	}
 }
 
@@ -515,7 +515,7 @@ func BenchmarkConnectionManager_GetConnection(b *testing.B) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http",
@@ -529,7 +529,7 @@ func BenchmarkConnectionManager_GetConnection(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cm.GetConnection(connectionID)
+		_, _ = cm.GetConnection(connectionID)
 	}
 }
 
@@ -539,7 +539,7 @@ func TestHTTPProxyWithWhitelist(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http-whitelist",
@@ -620,7 +620,7 @@ func TestHTTPProxyWithApprovalManager(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:   "test-http-approval",
@@ -680,7 +680,7 @@ func TestPostgresConnectionNoProxy(t *testing.T) {
 	defer cm.CloseAll()
 
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	connConfig := &config.ConnectionConfig{
 		Name:            "test-postgres",

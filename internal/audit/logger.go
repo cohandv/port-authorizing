@@ -74,7 +74,7 @@ func Close() {
 	for _, file := range logFiles {
 		// Don't close stdout
 		if file != os.Stdout {
-			file.Close()
+			_ = file.Close()
 		}
 	}
 	logFiles = make(map[string]*os.File)

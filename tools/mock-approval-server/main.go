@@ -145,7 +145,7 @@ func approveRequest(requestID, approver, reason string) {
 		log.Printf("❌ Failed to approve request: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		log.Printf("✅ Request %s APPROVED by %s", requestID, approver)
@@ -167,7 +167,7 @@ func rejectRequest(requestID, approver, reason string) {
 		log.Printf("❌ Failed to reject request: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		log.Printf("❌ Request %s REJECTED by %s", requestID, approver)

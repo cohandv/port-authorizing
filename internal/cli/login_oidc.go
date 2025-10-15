@@ -28,7 +28,7 @@ func runOIDCLogin(apiURL string) error {
 	errorChan := make(chan error, 1)
 
 	server := startCallbackServer(callbackChan, errorChan, state)
-	defer server.Shutdown(context.Background())
+	defer func() { _ = server.Shutdown(context.Background()) }()
 
 	// Build authorization URL (API will redirect to Keycloak)
 	authURL := fmt.Sprintf("%s/api/auth/oidc/login?state=%s&cli_callback=http://localhost:8089/callback",
@@ -124,7 +124,7 @@ func startCallbackServer(callbackChan chan *loginResponse, errorChan chan error,
 
 		// Send success page
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `
+		_, _ = fmt.Fprint(w, `
 <!DOCTYPE html>
 <html>
 <head>
@@ -201,7 +201,7 @@ func startCallbackServer(callbackChan chan *loginResponse, errorChan chan error,
 		Handler: mux,
 	}
 
-	go server.ListenAndServe()
+	go func() { _ = server.ListenAndServe() }()
 	return server
 }
 

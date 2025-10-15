@@ -32,9 +32,9 @@ func runList(cmd *cobra.Command, args []string) error {
 	apiURL := ctx.APIURL
 	token := ctx.Token
 
-	// Allow override from command line flag
-	if flagURL, _ := cmd.Root().PersistentFlags().GetString("api-url"); flagURL != "" {
-		apiURL = flagURL
+	// Allow override from command line flag (only if explicitly provided)
+	if cmd.Root().PersistentFlags().Changed("api-url") {
+		apiURL, _ = cmd.Root().PersistentFlags().GetString("api-url")
 	}
 
 	// Create request

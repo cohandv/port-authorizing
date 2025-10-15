@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davidcohan/port-authorizing/internal/auth"
 	"github.com/davidcohan/port-authorizing/internal/audit"
+	"github.com/davidcohan/port-authorizing/internal/auth"
+	"github.com/gorilla/websocket"
 )
 
 // oidcStateStore keeps track of OIDC state for CSRF protection
@@ -20,11 +21,18 @@ type oidcStateStore struct {
 
 type oidcState struct {
 	cliCallback string
+	ws          *websocket.Conn
 	createdAt   time.Time
 }
 
 var stateStore = &oidcStateStore{
 	states: make(map[string]*oidcState),
+}
+
+var oidcUpgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for CLI
+	},
 }
 
 // Clean up expired states periodically
@@ -38,11 +46,12 @@ func init() {
 	}()
 }
 
-func (s *oidcStateStore) set(state string, cliCallback string) {
+func (s *oidcStateStore) set(state string, cliCallback string, ws *websocket.Conn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.states[state] = &oidcState{
 		cliCallback: cliCallback,
+		ws:          ws,
 		createdAt:   time.Now(),
 	}
 }
@@ -71,7 +80,62 @@ func (s *oidcStateStore) cleanup() {
 	}
 }
 
-// handleOIDCLogin initiates the OIDC authentication flow
+// handleOIDCWebSocket handles WebSocket-based OIDC authentication
+func (s *Server) handleOIDCWebSocket(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, "Missing session_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Upgrade to WebSocket
+	ws, err := oidcUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		return
+	}
+	defer ws.Close()
+
+	// Find OIDC provider
+	var oidcProvider *auth.OIDCProvider
+	for _, provider := range s.authSvc.authManager.GetProviders() {
+		if oidcProv, ok := provider.(*auth.OIDCProvider); ok && oidcProv.IsEnabled() {
+			oidcProvider = oidcProv
+			break
+		}
+	}
+
+	if oidcProvider == nil {
+		ws.WriteJSON(map[string]string{"error": "OIDC provider not configured"})
+		return
+	}
+
+	// Build authorization URL
+	redirectURL := s.config.Auth.Providers[0].Config["redirect_url"]
+	authURL, err := oidcProvider.GetAuthorizationURL(sessionID, redirectURL)
+	if err != nil {
+		ws.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to generate auth URL: %v", err)})
+		return
+	}
+
+	// Store WebSocket connection for this session
+	stateStore.set(sessionID, "", ws)
+
+	// Send auth URL to CLI
+	if err := ws.WriteJSON(map[string]string{"auth_url": authURL}); err != nil {
+		return
+	}
+
+	// Keep connection alive (CLI will wait for token)
+	// The connection will be used by handleOIDCCallback to push the token
+	for {
+		if _, _, err := ws.ReadMessage(); err != nil {
+			break // Connection closed
+		}
+	}
+}
+
+// handleOIDCLogin initiates the OIDC authentication flow (legacy browser-based)
 func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	cliCallback := r.URL.Query().Get("cli_callback")
@@ -82,7 +146,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store state for callback verification
-	stateStore.set(state, cliCallback)
+	stateStore.set(state, cliCallback, nil)
 
 	// Find OIDC provider
 	var oidcProvider *auth.OIDCProvider
@@ -180,18 +244,68 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	// Encode as JSON
-	jsonData, err := json.Marshal(loginResp)
-	if err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	// Check if this is a WebSocket-based authentication
+	if stateData.ws != nil {
+		// Push token through WebSocket
+		if err := stateData.ws.WriteJSON(loginResp); err != nil {
+			http.Error(w, "Failed to send token to CLI", http.StatusInternalServerError)
+			return
+		}
+
+		// Show success page in browser
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authentication Successful</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 { color: #667eea; margin: 0 0 1rem 0; }
+        .success { font-size: 4rem; color: #2ecc71; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success">✓</div>
+        <h1>Authentication Successful!</h1>
+        <p>You can close this window and return to your terminal.</p>
+    </div>
+    <script>setTimeout(() => window.close(), 3000);</script>
+</body>
+</html>`)
 		return
 	}
 
-	// Base64 encode for URL safety
-	tokenData := base64.URLEncoding.EncodeToString(jsonData)
+	// Legacy: Redirect to CLI callback
+	if stateData.cliCallback != "" {
+		// Encode as JSON
+		jsonData, err := json.Marshal(loginResp)
+		if err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+			return
+		}
 
-	// Redirect to CLI callback
-	callbackURL := fmt.Sprintf("%s?state=%s&token_data=%s", stateData.cliCallback, state, tokenData)
-	http.Redirect(w, r, callbackURL, http.StatusFound)
+		// Base64 encode for URL safety
+		tokenData := base64.URLEncoding.EncodeToString(jsonData)
+
+		// Redirect to CLI callback
+		callbackURL := fmt.Sprintf("%s?state=%s&token_data=%s", stateData.cliCallback, state, tokenData)
+		http.Redirect(w, r, callbackURL, http.StatusFound)
+	}
 }
-

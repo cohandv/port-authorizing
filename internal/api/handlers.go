@@ -22,7 +22,7 @@ type AuthProviderInfo struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Enabled     bool   `json:"enabled"`
-	RedirectURL string `json:"redirect_url,omitempty"` // For OIDC - the callback URL
+	RedirectURL string `json:"redirect_url,omitempty"` // Where OIDC provider redirects to server
 }
 
 // ConnectionInfo represents connection information for the client
@@ -58,7 +58,7 @@ func (s *Server) handleServerInfo(w http.ResponseWriter, r *http.Request) {
 			Enabled: p.Enabled,
 		}
 
-		// For OIDC providers, include the redirect URL (callback URL) from config
+		// For OIDC providers, include redirect URL (informational only)
 		if p.Type == "oidc" && p.Config != nil {
 			if redirectURL, ok := p.Config["redirect_url"]; ok {
 				providerInfo.RedirectURL = redirectURL

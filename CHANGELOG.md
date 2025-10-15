@@ -1,3 +1,10 @@
+## [1.7.0](https://github.com/cohandv/port-authorizing/compare/v1.6.0...v1.7.0) (2025-10-15)
+
+
+### Features
+
+* implementation of websockets ([#2](https://github.com/cohandv/port-authorizing/issues/2)) ([6823bba](https://github.com/cohandv/port-authorizing/commit/6823bba3727c6203eb04ea7f1951aa2db8aca99d))
+
 ## [1.6.0](https://github.com/cohandv/port-authorizing/compare/v1.5.0...v1.6.0) (2025-10-08)
 
 

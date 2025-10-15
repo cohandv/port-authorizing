@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/cohandv/port-authorizing/compare/v1.7.3...v1.7.4) (2025-10-15)
+
+
+### Bug Fixes
+
+* ignore main tag ([a8945fe](https://github.com/cohandv/port-authorizing/commit/a8945fe5fd3266168ec91d947d391c5735a62331))
+
 ## [1.7.3](https://github.com/cohandv/port-authorizing/compare/v1.7.2...v1.7.3) (2025-10-15)
 
 

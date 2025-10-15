@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/davidcohan/port-authorizing/internal/approval"
+	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/authorization"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"github.com/davidcohan/port-authorizing/internal/proxy"
@@ -15,17 +17,32 @@ import (
 
 // Server represents the API server
 type Server struct {
-	config      *config.Config
-	router      *mux.Router
-	httpServer  *http.Server
-	connMgr     *proxy.ConnectionManager
-	authSvc     *AuthService
-	authz       *authorization.Authorizer
-	approvalMgr *approval.Manager
+	config         *config.Config
+	configMu       sync.RWMutex
+	storageBackend config.StorageBackend
+	router         *mux.Router
+	httpServer     *http.Server
+	connMgr        *proxy.ConnectionManager
+	authSvc        *AuthService
+	authz          *authorization.Authorizer
+	approvalMgr    *approval.Manager
 }
 
 // NewServer creates a new API server instance
 func NewServer(cfg *config.Config) (*Server, error) {
+	// Configure audit memory buffer
+	memoryMB := cfg.Logging.AuditMemoryMB
+	if memoryMB == 0 {
+		memoryMB = 1 // Default to 1MB
+	}
+	audit.ConfigureMemoryBuffer(memoryMB)
+
+	// Initialize storage backend
+	storageBackend, err := config.NewStorageBackend(cfg.Storage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create storage backend: %w", err)
+	}
+
 	authSvc, err := NewAuthService(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auth service: %w", err)
@@ -59,16 +76,80 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		config:      cfg,
-		router:      mux.NewRouter(),
-		connMgr:     proxy.NewConnectionManager(cfg.Server.MaxConnectionDuration),
-		authSvc:     authSvc,
-		authz:       authorization.NewAuthorizer(cfg),
-		approvalMgr: approvalMgr,
+		config:         cfg,
+		storageBackend: storageBackend,
+		router:         mux.NewRouter(),
+		connMgr:        proxy.NewConnectionManager(cfg.Server.MaxConnectionDuration),
+		authSvc:        authSvc,
+		authz:          authorization.NewAuthorizer(cfg),
+		approvalMgr:    approvalMgr,
 	}
 
 	s.setupRoutes()
 	return s, nil
+}
+
+// ReloadConfig reloads the configuration and updates server components
+// while preserving existing connections
+func (s *Server) ReloadConfig(newCfg *config.Config) error {
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+
+	// Reconfigure audit memory buffer
+	memoryMB := newCfg.Logging.AuditMemoryMB
+	if memoryMB == 0 {
+		memoryMB = 1 // Default to 1MB
+	}
+	audit.ConfigureMemoryBuffer(memoryMB)
+
+	// Recreate auth service
+	authSvc, err := NewAuthService(newCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create auth service: %w", err)
+	}
+
+	// Recreate authorizer
+	authz := authorization.NewAuthorizer(newCfg)
+
+	// Recreate approval manager
+	approvalMgr := approval.NewManager(5 * time.Minute)
+	if newCfg.Approval != nil && newCfg.Approval.Enabled {
+		if newCfg.Approval.Webhook != nil && newCfg.Approval.Webhook.URL != "" {
+			webhookProvider := approval.NewWebhookProvider(newCfg.Approval.Webhook.URL)
+			approvalMgr.RegisterProvider(webhookProvider)
+		}
+
+		if newCfg.Approval.Slack != nil && newCfg.Approval.Slack.WebhookURL != "" {
+			slackProvider := approval.NewSlackProvider(
+				newCfg.Approval.Slack.WebhookURL,
+				newCfg.Server.BaseURL,
+			)
+			approvalMgr.RegisterProvider(slackProvider)
+		}
+
+		for _, pattern := range newCfg.Approval.Patterns {
+			timeout := time.Duration(pattern.TimeoutSeconds) * time.Second
+			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, timeout); err != nil {
+				return fmt.Errorf("failed to add approval pattern: %w", err)
+			}
+		}
+	}
+
+	// Update server fields
+	// Note: We intentionally preserve connMgr to keep existing connections alive
+	s.config = newCfg
+	s.authSvc = authSvc
+	s.authz = authz
+	s.approvalMgr = approvalMgr
+
+	return nil
+}
+
+// GetConfig returns the current configuration (thread-safe)
+func (s *Server) GetConfig() *config.Config {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.config
 }
 
 // setupRoutes configures all API routes
@@ -100,6 +181,48 @@ func (s *Server) setupRoutes() {
 
 	// Admin endpoint for pending approvals (requires auth)
 	api.HandleFunc("/approvals/pending", s.handleGetPendingApprovals).Methods("GET", "OPTIONS")
+
+	// Admin API endpoints (require auth + admin role) - MUST come before /admin/ prefix
+	adminAPI := s.router.PathPrefix("/admin/api").Subrouter()
+	adminAPI.Use(s.authMiddleware, s.adminMiddleware)
+
+	// Configuration management
+	adminAPI.HandleFunc("/config", s.handleGetConfig).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/config", s.handleUpdateConfig).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/config/versions", s.handleListConfigVersions).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/config/versions/{id}", s.handleGetConfigVersion).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/config/rollback/{id}", s.handleRollbackConfig).Methods("POST", "OPTIONS")
+
+	// Connection management
+	adminAPI.HandleFunc("/connections", s.handleListAllConnections).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/connections", s.handleCreateConnection).Methods("POST", "OPTIONS")
+	adminAPI.HandleFunc("/connections/{name}", s.handleUpdateConnection).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/connections/{name}", s.handleDeleteConnection).Methods("DELETE", "OPTIONS")
+
+	// User management
+	adminAPI.HandleFunc("/users", s.handleListUsers).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/users", s.handleCreateUser).Methods("POST", "OPTIONS")
+	adminAPI.HandleFunc("/users/{username}", s.handleUpdateUser).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/users/{username}", s.handleDeleteUser).Methods("DELETE", "OPTIONS")
+
+	// Policy management
+	adminAPI.HandleFunc("/policies", s.handleListPolicies).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/policies", s.handleCreatePolicy).Methods("POST", "OPTIONS")
+	adminAPI.HandleFunc("/policies/{name}", s.handleUpdatePolicy).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/policies/{name}", s.handleDeletePolicy).Methods("DELETE", "OPTIONS")
+
+	// Audit logs
+	adminAPI.HandleFunc("/audit/logs", s.handleGetAuditLogs).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/audit/stats", s.handleGetAuditStats).Methods("GET", "OPTIONS")
+
+	// System status
+	adminAPI.HandleFunc("/status", s.handleGetSystemStatus).Methods("GET", "OPTIONS")
+
+	// Admin UI routes (HTML/CSS/JS served without auth - auth handled by JavaScript)
+	// These MUST come after /admin/api routes to avoid conflicts
+	s.router.HandleFunc("/admin", s.handleAdminUI).Methods("GET")
+	s.router.HandleFunc("/admin/", s.handleAdminUI).Methods("GET")
+	s.router.PathPrefix("/admin/").HandlerFunc(s.handleAdminUI).Methods("GET")
 }
 
 // corsMiddleware adds CORS headers to all responses (allow all origins)

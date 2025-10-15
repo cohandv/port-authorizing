@@ -11,6 +11,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.3.3
 	github.com/spf13/cobra v1.10.1
 	github.com/xdg-go/scram v1.1.2
+	golang.org/x/crypto v0.42.0
 	golang.org/x/oauth2 v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -26,6 +27,5 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 )

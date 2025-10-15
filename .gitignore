@@ -43,3 +43,6 @@ temp/
 
 coverage.html
 coverage.out
+
+
+config.v*

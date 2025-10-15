@@ -3,6 +3,18 @@ server:
   max_connection_duration: 2h
   base_url: "http://localhost:8080"  # Base URL for approval callbacks
 
+# Storage configuration (optional - defaults to file)
+storage:
+  type: file  # Options: file, kubernetes
+  path: config.yaml  # For file backend
+  versions: 5  # Number of versions to keep
+
+  # For Kubernetes backend (when running in K8s):
+  # type: kubernetes
+  # namespace: default
+  # resource_type: configmap  # or secret
+  # resource_name: port-authorizing-config
+
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
   token_expiry: 24h
@@ -293,6 +305,7 @@ logging:
 # audit_log_path: "stdout"
   audit_log_path: "audit.log"
   log_level: "info"
+  audit_memory_mb: 1  # Max memory for in-memory audit buffer (0 to disable, default 1MB)
 
 # Approval workflow configuration
 # Requires human approval for certain commands before execution

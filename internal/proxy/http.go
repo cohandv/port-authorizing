@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
@@ -31,15 +32,19 @@ type HTTPProxy struct {
 func NewHTTPProxy(config *config.ConnectionConfig) *HTTPProxy {
 	return &HTTPProxy{
 		config: config,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second, // Add timeout for HTTPS connections
+		},
 	}
 }
 
 // NewHTTPProxyWithWhitelist creates a new HTTP proxy with whitelist support
 func NewHTTPProxyWithWhitelist(config *config.ConnectionConfig, whitelist []string, auditLogPath, username, connectionID string) *HTTPProxy {
 	return &HTTPProxy{
-		config:       config,
-		client:       &http.Client{},
+		config: config,
+		client: &http.Client{
+			Timeout: 30 * time.Second, // Add timeout for HTTPS connections
+		},
 		whitelist:    whitelist,
 		auditLogPath: auditLogPath,
 		username:     username,
@@ -263,7 +268,11 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 		}
 	}
 
-	// Execute request
+	// Execute request with context timeout
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	proxyReq = proxyReq.WithContext(ctx)
+
 	resp, err := p.client.Do(proxyReq)
 	if err != nil {
 		return fmt.Errorf("failed to execute proxy request: %w", err)
@@ -292,9 +301,30 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 	// Write status code
 	w.WriteHeader(resp.StatusCode)
 
-	// Copy response body
-	if _, err := io.Copy(w, resp.Body); err != nil {
-		return fmt.Errorf("failed to copy response body: %w", err)
+	// Copy response body with proper flushing for HTTPS
+	if flusher, ok := w.(http.Flusher); ok {
+		// Use buffered copying with periodic flushing for HTTPS
+		buf := make([]byte, 32*1024) // 32KB buffer
+		for {
+			n, err := resp.Body.Read(buf)
+			if n > 0 {
+				if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+					return fmt.Errorf("failed to write response: %w", writeErr)
+				}
+				flusher.Flush() // Flush after each chunk
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read response body: %w", err)
+			}
+		}
+	} else {
+		// Fallback to regular copy for non-flushable responses
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			return fmt.Errorf("failed to copy response body: %w", err)
+		}
 	}
 
 	return nil

@@ -257,6 +257,7 @@ async function editConnection(name) {
         document.getElementById('conn-type').value = conn.type;
         document.getElementById('conn-host').value = conn.host;
         document.getElementById('conn-port').value = conn.port;
+        document.getElementById('conn-scheme').value = conn.scheme || 'http';
         document.getElementById('conn-tags').value = conn.tags ? conn.tags.join(', ') : '';
         document.getElementById('conn-backend-username').value = conn.backend_username || '';
         document.getElementById('conn-backend-database').value = conn.backend_database || '';
@@ -281,6 +282,7 @@ async function saveConnection(event) {
         type: document.getElementById('conn-type').value,
         host: document.getElementById('conn-host').value,
         port: parseInt(document.getElementById('conn-port').value),
+        scheme: document.getElementById('conn-scheme').value,
         tags: tags,
         backend_username: document.getElementById('conn-backend-username').value,
         backend_password: document.getElementById('conn-backend-password').value,

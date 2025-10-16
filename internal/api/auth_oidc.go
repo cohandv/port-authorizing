@@ -295,7 +295,6 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 </head>
 <body>
     <div class="container">
-        <div class="success">✓</div>
         <h1>Authentication Successful!</h1>
         <p>You can close this window and return to your terminal.</p>
     </div>

@@ -54,29 +54,54 @@ func (s *Server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Return HTML success page
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = fmt.Fprintf(w, `
-<!DOCTYPE html>
+		html := `<!DOCTYPE html>
 <html>
 <head>
     <title>Request Approved</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
-        .success { color: #28a745; font-size: 48px; }
-        .message { font-size: 18px; margin: 20px 0; }
-        .details { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 { color: #667eea; margin: 0 0 1rem 0; }
+        .success { font-size: 4rem; color: #2ecc71; margin-bottom: 1rem; }
+        .message { font-size: 1rem; color: #555; margin: 1rem 0; }
+        .details { 
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 0.5rem; 
+            margin: 1.5rem 0;
+            font-size: 0.9rem;
+            color: #666;
+        }
     </style>
 </head>
 <body>
-    <div class="success">✅</div>
-    <h1>Request Approved</h1>
-    <div class="message">The request has been successfully approved and will be executed.</div>
-    <div class="details">
-        <p><strong>Request ID:</strong> %s</p>
-        <p><strong>Approved by:</strong> %s</p>
+    <div class="container">
+        <div class="success">&#10004;</div>
+        <h1>Request Approved</h1>
+        <p class="message">The request has been successfully approved and will be executed.</p>
+        <div class="details">
+            <p><strong>Request ID:</strong> ` + requestID + `</p>
+        </div>
+        <p>You can close this window and return to your work.</p>
     </div>
+    <script>setTimeout(() => window.close(), 3000);</script>
 </body>
-</html>
-`, requestID, approver)
+</html>`
+		_, _ = w.Write([]byte(html))
 	}
 }
 
@@ -124,29 +149,54 @@ func (s *Server) handleRejectRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Return HTML success page
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = fmt.Fprintf(w, `
-<!DOCTYPE html>
+		html := `<!DOCTYPE html>
 <html>
 <head>
     <title>Request Rejected</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; text-align: center; }
-        .rejected { color: #dc3545; font-size: 48px; }
-        .message { font-size: 18px; margin: 20px 0; }
-        .details { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 { color: #dc3545; margin: 0 0 1rem 0; }
+        .rejected { font-size: 4rem; color: #dc3545; margin-bottom: 1rem; }
+        .message { font-size: 1rem; color: #555; margin: 1rem 0; }
+        .details { 
+            background: #f8f9fa; 
+            padding: 1rem; 
+            border-radius: 0.5rem; 
+            margin: 1.5rem 0;
+            font-size: 0.9rem;
+            color: #666;
+        }
     </style>
 </head>
 <body>
-    <div class="rejected">❌</div>
-    <h1>Request Rejected</h1>
-    <div class="message">The request has been rejected and will not be executed.</div>
-    <div class="details">
-        <p><strong>Request ID:</strong> %s</p>
-        <p><strong>Rejected by:</strong> %s</p>
+    <div class="container">
+        <div class="rejected">&#10008;</div>
+        <h1>Request Rejected</h1>
+        <p class="message">The request has been rejected and will not be executed.</p>
+        <div class="details">
+            <p><strong>Request ID:</strong> ` + requestID + `</p>
+        </div>
+        <p>You can close this window and return to your work.</p>
     </div>
+    <script>setTimeout(() => window.close(), 3000);</script>
 </body>
-</html>
-`, requestID, approver)
+</html>`
+		_, _ = w.Write([]byte(html))
 	}
 }
 

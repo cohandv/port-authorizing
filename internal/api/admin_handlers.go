@@ -43,7 +43,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	comment = fmt.Sprintf("%s (by %s)", comment, username)
 
 	// Save configuration
-	if err := s.storageBackend.Save(&newCfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), &newCfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save configuration: %v", err))
 		return
 	}
@@ -62,7 +62,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 
 // handleListConfigVersions lists available configuration versions
 func (s *Server) handleListConfigVersions(w http.ResponseWriter, r *http.Request) {
-	versions, err := s.storageBackend.ListVersions()
+	versions, err := s.storageBackend.ListVersions(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to list versions: %v", err))
 		return
@@ -76,7 +76,7 @@ func (s *Server) handleGetConfigVersion(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	versionID := vars["id"]
 
-	cfg, err := s.storageBackend.LoadVersion(versionID)
+	cfg, err := s.storageBackend.LoadVersion(r.Context(), versionID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, fmt.Sprintf("Version not found: %v", err))
 		return
@@ -91,13 +91,14 @@ func (s *Server) handleRollbackConfig(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	versionID := vars["id"]
 
-	if err := s.storageBackend.Rollback(versionID); err != nil {
+	cfg, err := s.storageBackend.Rollback(r.Context(), versionID)
+	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to rollback: %v", err))
 		return
 	}
 
 	// Load the rolled back configuration
-	cfg, err := s.storageBackend.Load()
+	cfg, err = s.storageBackend.Load(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load configuration: %v", err))
 		return
@@ -153,7 +154,7 @@ func (s *Server) handleCreateConnection(w http.ResponseWriter, r *http.Request) 
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Added connection %s (by %s)", conn.Name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -201,7 +202,7 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Updated connection %s (by %s)", name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -242,7 +243,7 @@ func (s *Server) handleDeleteConnection(w http.ResponseWriter, r *http.Request) 
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Deleted connection %s (by %s)", name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -313,7 +314,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Added user %s (by %s)", req.Username, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -372,7 +373,7 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	adminUsername := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Updated user %s (by %s)", username, adminUsername)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -416,7 +417,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	adminUsername := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Deleted user %s (by %s)", username, adminUsername)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -466,7 +467,7 @@ func (s *Server) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Added policy %s (by %s)", policy.Name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -514,7 +515,7 @@ func (s *Server) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Updated policy %s (by %s)", name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}
@@ -555,7 +556,7 @@ func (s *Server) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 	// Save and reload
 	username := r.Context().Value(ContextKeyUsername).(string)
 	comment := fmt.Sprintf("Deleted policy %s (by %s)", name, username)
-	if err := s.storageBackend.Save(cfg, comment); err != nil {
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
 		return
 	}

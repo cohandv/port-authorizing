@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: port-authorizing-config
+  namespace: port-authorizing
+  labels:
+    app: port-authorizing
+  annotations:
+    port-authorizing.io/comment: "Initial configuration"
+    port-authorizing.io/timestamp: "2024-01-15T00:00:00Z"
+data:
+  config.yaml: |
+    server:
+      port: 8080
+      max_connection_duration: 2h
+      base_url: "http://port-authorizing.port-authorizing.svc.cluster.local:8080"
+
+    # Storage configuration - points to itself for versioning
+    storage:
+      type: kubernetes
+      namespace: port-authorizing
+      resource_type: configmap
+      resource_name: port-authorizing-config
+      versions: 5
+
+    auth:
+      jwt_secret: "change-this-secret-in-production"
+      token_expiry: 24h
+
+      providers:
+        - name: local
+          type: local
+          enabled: true
+          config: {}
+
+      users:
+        - username: admin
+          password: "admin123"  # Plain text for now - change in production!
+          roles: [admin, developer]
+        - username: developer
+          password: "dev456"
+          roles: [developer]
+
+    connections:
+      - name: test-postgres
+        type: postgres
+        host: postgres.default.svc.cluster.local
+        port: 5432
+        tags: [env:dev, team:platform]
+
+      - name: test-http
+        type: http
+        host: httpbin.org
+        port: 80
+        scheme: http
+        tags: [env:dev, type:api]
+
+    policies:
+      - name: dev-all-access
+        roles: [developer, admin]
+        tags: [env:dev]
+        tag_match: any
+        whitelist:
+          - "SELECT.*"
+          - "GET.*"
+          - "POST.*"
+
+      - name: admin-full-access
+        roles: [admin]
+        tags: []
+        tag_match: all
+        whitelist:
+          - ".*"
+
+    security:
+      enable_llm_analysis: false
+
+    logging:
+      audit_log_path: "stdout"
+      log_level: "info"
+      audit_memory_mb: 2
+
+    approval:
+      enabled: false
+

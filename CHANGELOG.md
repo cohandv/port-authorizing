@@ -1,3 +1,10 @@
+## [1.12.0](https://github.com/cohandv/port-authorizing/compare/v1.11.0...v1.12.0) (2025-10-16)
+
+
+### Features
+
+* improved usability on ui ([a51d8a6](https://github.com/cohandv/port-authorizing/commit/a51d8a6b6d1eea641811f68d45ada6aa0c0156a3))
+
 ## [1.11.0](https://github.com/cohandv/port-authorizing/compare/v1.10.0...v1.11.0) (2025-10-16)
 
 

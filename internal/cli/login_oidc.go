@@ -50,7 +50,7 @@ func fetchServerInfo(apiURL string) (*serverInfo, error) {
 }
 
 // runOIDCLogin performs browser-based OIDC authentication using WebSocket
-func runOIDCLogin(apiURL string) error {
+func runOIDCLogin(apiURL, contextName string) error {
 	fmt.Println("🔐 Starting browser-based OIDC authentication...")
 	fmt.Println("")
 
@@ -102,9 +102,14 @@ func runOIDCLogin(apiURL string) error {
 		return fmt.Errorf("failed to receive authentication response: %w", err)
 	}
 
-	// Save token
-	if err := saveToken(loginResp.Token); err != nil {
-		return fmt.Errorf("failed to save token: %w", err)
+	// Save token and context
+	ctx := Context{
+		Name:   contextName,
+		APIURL: apiURL,
+		Token:  loginResp.Token,
+	}
+	if err := SaveContext(ctx, true); err != nil {
+		return fmt.Errorf("failed to save context: %w", err)
 	}
 
 	fmt.Println("✓ Authentication successful!")

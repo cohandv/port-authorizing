@@ -169,14 +169,28 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleOIDCCallback handles the OIDC callback from Keycloak
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
+	// DEBUG: Log that callback was hit
+	_ = audit.Log(s.config.Logging.AuditLogPath, "system", "oidc_callback_start", "oidc", map[string]interface{}{
+		"url": r.URL.String(),
+	})
+
 	// Get authorization code and state
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 
 	if code == "" || state == "" {
+		_ = audit.Log(s.config.Logging.AuditLogPath, "system", "oidc_callback_missing_params", "oidc", map[string]interface{}{
+			"has_code":  code != "",
+			"has_state": state != "",
+		})
 		http.Error(w, "Missing code or state parameter", http.StatusBadRequest)
 		return
 	}
+
+	_ = audit.Log(s.config.Logging.AuditLogPath, "system", "oidc_callback_has_params", "oidc", map[string]interface{}{
+		"has_code":  true,
+		"has_state": true,
+	})
 
 	// Verify state and get CLI callback
 	stateData, ok := stateStore.get(state)
@@ -202,6 +216,9 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Exchange authorization code for token
 	redirectURL := s.config.Auth.Providers[0].Config["redirect_url"]
+	_ = audit.Log(s.config.Logging.AuditLogPath, "system", "oidc_exchange_start", "oidc", map[string]interface{}{
+		"redirect_url": redirectURL,
+	})
 	userInfo, err := oidcProvider.ExchangeCodeForToken(code, redirectURL)
 	if err != nil {
 		_ = audit.Log(s.config.Logging.AuditLogPath, "unknown", "oidc_token_exchange_failed", "oidc", map[string]interface{}{
@@ -223,8 +240,10 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 	// Log successful OIDC login
 	_ = audit.Log(s.config.Logging.AuditLogPath, userInfo.Username, "oidc_login_success", "oidc", map[string]interface{}{
-		"email": userInfo.Email,
-		"roles": userInfo.Roles,
+		"email":       userInfo.Email,
+		"roles":       userInfo.Roles,
+		"roles_count": len(userInfo.Roles),
+		"has_roles":   len(userInfo.Roles) > 0,
 	})
 
 	// Build login response

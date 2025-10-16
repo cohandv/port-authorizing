@@ -1039,31 +1039,20 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 		matchingPolicies = append(matchingPolicies, policyResult)
 
 		// Check if this policy would allow access for the given query
-		var queryToTest string
-		var hasSpecificQuery bool
-
-		if queryType == "database" && testData.Query != "" {
-			// Database query - validate subqueries for PL/SQL scripts
-			queryToTest = testData.Query
-			hasSpecificQuery = true
-		} else if queryType == "http" && testData.Method != "" && testData.Path != "" {
-			// HTTP request
-			queryToTest = fmt.Sprintf("%s %s", testData.Method, testData.Path)
-			hasSpecificQuery = true
-		}
-
-		if hasSpecificQuery {
-			// Use the authorization logic to check if access would be granted
+		if queryType == "http" && testData.Method != "" && testData.Path != "" {
+			// HTTP request - use simple pattern matching
+			queryToTest := fmt.Sprintf("%s %s", testData.Method, testData.Path)
 			whitelist := s.authz.GetWhitelistForConnection([]string{testData.Role}, testData.Connection)
 			if len(whitelist) > 0 {
-				// Check if the query matches any whitelist rule
 				if err := s.authz.ValidatePattern(queryToTest, whitelist); err == nil {
 					hasAccess = true
 				}
 			} else {
-				// No whitelist rules means access is allowed
 				hasAccess = true
 			}
+		} else if queryType == "database" && testData.Query != "" {
+			// Database query - use subquery validation to handle multi-statement queries
+			// This will be set later after we run ValidateScript
 		} else {
 			// If no specific query provided, just having a matching policy means potential access
 			hasAccess = true
@@ -1089,12 +1078,16 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 		"connectionType":   connection.Type, // Include connection type for reference
 	}
 
-	// Add subquery validation for database queries
+	// Add subquery validation for database queries and use it to determine hasAccess
 	if queryType == "database" && testData.Query != "" {
 		validator := security.NewSubqueryValidator()
 		whitelist := s.authz.GetWhitelistForConnection([]string{testData.Role}, testData.Connection)
 		validationResult := validator.ValidateScript(testData.Query, whitelist)
 		result["subquery_validation"] = validationResult
+
+		// For database queries, hasAccess should match the subquery validation result
+		// This ensures multi-statement queries are properly validated
+		result["hasAccess"] = validationResult.IsAllowed
 	}
 
 	// Check if approval is required

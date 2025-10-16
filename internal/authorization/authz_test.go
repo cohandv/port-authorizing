@@ -320,6 +320,24 @@ func TestAuthorizer_ValidatePattern(t *testing.T) {
 			whitelist: []string{"[invalid"},
 			wantErr:   true,
 		},
+		{
+			name:      "case-insensitive: lowercase select matches uppercase SELECT pattern",
+			query:     "select * from users",
+			whitelist: []string{"^SELECT.*"},
+			wantErr:   false,
+		},
+		{
+			name:      "case-insensitive: uppercase SELECT matches lowercase select pattern",
+			query:     "SELECT * FROM users",
+			whitelist: []string{"^select.*"},
+			wantErr:   false,
+		},
+		{
+			name:      "case-insensitive: mixed case query matches pattern",
+			query:     "SeLeCt * FrOm users",
+			whitelist: []string{"^SELECT.*"},
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -172,7 +172,9 @@ func (a *Authorizer) ValidatePattern(query string, whitelist []string) error {
 	}
 
 	for _, pattern := range whitelist {
-		matched, err := regexp.MatchString(pattern, query)
+		// Make regex case-insensitive by prepending (?i)
+		caseInsensitivePattern := "(?i)" + pattern
+		matched, err := regexp.MatchString(caseInsensitivePattern, query)
 		if err != nil {
 			return fmt.Errorf("invalid whitelist pattern: %s", pattern)
 		}
@@ -224,6 +226,7 @@ func (a *Authorizer) GetConnectionInfo(connectionName string) map[string]interfa
 }
 
 // Helper function to check if string slice contains a value
+//
 //nolint:unused // Reserved for future tag matching logic
 func contains(slice []string, value string) bool {
 	for _, item := range slice {

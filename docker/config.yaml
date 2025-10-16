@@ -17,7 +17,7 @@ auth:
         issuer: "http://keycloak:8180/realms/portauth"
         client_id: "port-authorizing"
         client_secret: "your-client-secret-change-in-production"
-        redirect_url: "http://localhost:8080/api/auth/oidc/callback"  # External URL
+        redirect_url: "http://localhost:8080/api/auth/oidc/callback"
         roles_claim: "roles"
         username_claim: "preferred_username"
 

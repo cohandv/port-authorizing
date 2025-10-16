@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
 	"golang.org/x/oauth2"
 )
@@ -53,7 +55,7 @@ func NewOIDCProvider(cfg config.AuthProviderConfig) (*OIDCProvider, error) {
 		ClientSecret: clientSecret,
 		RedirectURL:  redirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
+		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "roles"},
 	}
 
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
@@ -128,16 +130,31 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	}
 
 	// Verify ID token
+	_ = audit.Log("stdout", "system", "oidc_verify_start", "oidc", map[string]interface{}{
+		"has_raw_token": rawIDToken != "",
+	})
+
 	idTokenParsed, err := p.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
+		_ = audit.Log("stdout", "system", "oidc_verify_failed", "oidc", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("failed to verify ID token: %w", err)
 	}
+
+	_ = audit.Log("stdout", "system", "oidc_verify_success", "oidc", nil)
 
 	// Extract claims
 	var claims map[string]interface{}
 	if err := idTokenParsed.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
+
+	// Debug: log all claims to see what we received
+	_ = audit.Log("stdout", "system", "oidc_debug_claims", "oidc", claims)
+	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]interface{}{
+		"roles_claim": p.rolesClaim,
+	})
 
 	// Extract username
 	username, _ := claims[p.usernameClaim].(string)
@@ -151,6 +168,10 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	// Extract roles
 	roles := []string{}
 	if rolesInterface, ok := claims[p.rolesClaim]; ok {
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]interface{}{
+			"value": rolesInterface,
+			"type":  fmt.Sprintf("%T", rolesInterface),
+		})
 		switch v := rolesInterface.(type) {
 		case []interface{}:
 			for _, role := range v {
@@ -163,7 +184,19 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 		case string:
 			roles = []string{v}
 		}
+	} else {
+		availableKeys := []string{}
+		for k := range claims {
+			availableKeys = append(availableKeys, k)
+		}
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]interface{}{
+			"roles_claim":    p.rolesClaim,
+			"available_keys": availableKeys,
+		})
 	}
+	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]interface{}{
+		"roles": roles,
+	})
 
 	return &UserInfo{
 		Username: username,
@@ -230,29 +263,72 @@ func (p *OIDCProvider) GetAuthorizationURL(state, redirectURL string) (string, e
 func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo, error) {
 	ctx := context.Background()
 
+	// DEBUG: Log function entry
+	_ = audit.Log("stdout", "system", "oidc_exchange_function_start", "oidc", map[string]interface{}{
+		"provider":     p.name,
+		"redirect_url": redirectURL,
+		"has_code":     code != "",
+	})
+
 	// Exchange authorization code for tokens
 	token, err := p.oauth2Config.Exchange(ctx, code)
 	if err != nil {
+		_ = audit.Log("stdout", "system", "oidc_exchange_failed", "oidc", map[string]interface{}{
+			"error":            err.Error(),
+			"error_type":       fmt.Sprintf("%T", err),
+			"scopes_requested": p.oauth2Config.Scopes,
+		})
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}
+
+	// Log detailed token information
+	tokenExtras := map[string]interface{}{}
+	if token.Extra("error") != nil {
+		tokenExtras["error"] = token.Extra("error")
+	}
+	if token.Extra("error_description") != nil {
+		tokenExtras["error_description"] = token.Extra("error_description")
+	}
+
+	_ = audit.Log("stdout", "system", "oidc_exchange_success", "oidc", map[string]interface{}{
+		"has_access_token": token.AccessToken != "",
+		"token_type":       token.TokenType,
+		"expires_in":       time.Until(token.Expiry).Seconds(),
+		"scopes_requested": p.oauth2Config.Scopes,
+		"token_extras":     tokenExtras,
+	})
 
 	// Extract ID token
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok || rawIDToken == "" {
+		_ = audit.Log("stdout", "system", "oidc_no_id_token", "oidc", nil)
 		return nil, fmt.Errorf("no id_token in response")
 	}
 
 	// Verify ID token
+	_ = audit.Log("stdout", "system", "oidc_verify_id_token_start", "oidc", nil)
 	idToken, err := p.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
+		_ = audit.Log("stdout", "system", "oidc_verify_id_token_failed", "oidc", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("failed to verify ID token: %w", err)
 	}
 
 	// Extract claims
 	var claims map[string]interface{}
 	if err := idToken.Claims(&claims); err != nil {
+		_ = audit.Log("stdout", "system", "oidc_claims_parse_failed", "oidc", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
+
+	// Debug: log all claims to see what we received
+	_ = audit.Log("stdout", "system", "oidc_debug_claims", "oidc", claims)
+	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]interface{}{
+		"roles_claim": p.rolesClaim,
+	})
 
 	// Extract username
 	username, _ := claims[p.usernameClaim].(string)
@@ -266,6 +342,10 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	// Extract roles
 	roles := []string{}
 	if rolesInterface, ok := claims[p.rolesClaim]; ok {
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]interface{}{
+			"value": rolesInterface,
+			"type":  fmt.Sprintf("%T", rolesInterface),
+		})
 		switch v := rolesInterface.(type) {
 		case []interface{}:
 			for _, role := range v {
@@ -278,7 +358,19 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 		case string:
 			roles = []string{v}
 		}
+	} else {
+		availableKeys := []string{}
+		for k := range claims {
+			availableKeys = append(availableKeys, k)
+		}
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]interface{}{
+			"roles_claim":    p.rolesClaim,
+			"available_keys": availableKeys,
+		})
 	}
+	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]interface{}{
+		"roles": roles,
+	})
 
 	sub, _ := claims["sub"].(string)
 

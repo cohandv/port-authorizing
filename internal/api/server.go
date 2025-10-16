@@ -168,6 +168,7 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/api/health", s.handleHealth).Methods("GET", "OPTIONS")
 
 	// OIDC authentication routes (public)
+	s.router.HandleFunc("/api/auth/oidc/ws", s.handleOIDCWebSocket).Methods("GET")
 	s.router.HandleFunc("/api/auth/oidc/login", s.handleOIDCLogin).Methods("GET", "OPTIONS")
 	s.router.HandleFunc("/api/auth/oidc/callback", s.handleOIDCCallback).Methods("GET", "OPTIONS")
 

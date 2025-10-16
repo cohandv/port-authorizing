@@ -142,8 +142,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 // runOIDCLoginWithContext wraps OIDC login with context saving
 func runOIDCLoginWithContext(apiURL, contextName string) error {
-	// TODO: Implement OIDC with context support
-	return runOIDCLogin(apiURL)
+	return runOIDCLogin(apiURL, contextName)
 }
 
 // Legacy saveToken - keeping for OIDC backward compatibility

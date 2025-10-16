@@ -3,10 +3,15 @@ package cli
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os/exec"
 	"runtime"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // serverInfo represents server configuration
@@ -46,8 +51,8 @@ func fetchServerInfo(apiURL string) (*serverInfo, error) {
 		return nil, fmt.Errorf("failed to parse server info: %w", err)
 	}
 
-	"github.com/gorilla/websocket"
-)
+	return &info, nil
+}
 
 // runOIDCLogin performs browser-based OIDC authentication using WebSocket
 func runOIDCLogin(apiURL, contextName string) error {

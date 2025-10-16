@@ -1,3 +1,10 @@
+## [1.9.0](https://github.com/cohandv/port-authorizing/compare/v1.8.0...v1.9.0) (2025-10-16)
+
+
+### Features
+
+* feature/storage cm ([#4](https://github.com/cohandv/port-authorizing/issues/4)) ([b51000c](https://github.com/cohandv/port-authorizing/commit/b51000c75723b7242f3b2d30b5cfd339e590d168))
+
 ## [1.8.0](https://github.com/cohandv/port-authorizing/compare/v1.7.4...v1.8.0) (2025-10-15)
 
 

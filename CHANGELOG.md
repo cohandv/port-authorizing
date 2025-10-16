@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/cohandv/port-authorizing/compare/v1.12.0...v1.12.1) (2025-10-16)
+
+
+### Bug Fixes
+
+* improved policies validations ([8dbb82a](https://github.com/cohandv/port-authorizing/commit/8dbb82a311fa10c5bbeaad443ff716dbea6b94a7))
+
 ## [1.12.0](https://github.com/cohandv/port-authorizing/compare/v1.11.0...v1.12.0) (2025-10-16)
 
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"github.com/davidcohan/port-authorizing/internal/security"
 	"github.com/gorilla/mux"
 )
 
@@ -919,7 +920,7 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 		var hasSpecificQuery bool
 
 		if queryType == "database" && testData.Query != "" {
-			// Database query
+			// Database query - validate subqueries for PL/SQL scripts
 			queryToTest = testData.Query
 			hasSpecificQuery = true
 		} else if queryType == "http" && testData.Method != "" && testData.Path != "" {
@@ -963,6 +964,14 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 		"matchingPolicies": matchingPolicies,
 		"connectionTags":   connection.Tags,
 		"connectionType":   connection.Type, // Include connection type for reference
+	}
+
+	// Add subquery validation for database queries
+	if queryType == "database" && testData.Query != "" {
+		validator := security.NewSubqueryValidator()
+		whitelist := s.authz.GetWhitelistForConnection([]string{testData.Role}, testData.Connection)
+		validationResult := validator.ValidateScript(testData.Query, whitelist)
+		result["subquery_validation"] = validationResult
 	}
 
 	respondJSON(w, http.StatusOK, result)

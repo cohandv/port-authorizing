@@ -18,6 +18,7 @@ import (
 	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"github.com/davidcohan/port-authorizing/internal/security"
 	"github.com/xdg-go/scram"
 )
 
@@ -768,13 +769,32 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 }
 
 // isQueryAllowed checks if a query matches the whitelist patterns (case-insensitive)
+// For PL/SQL scripts, validates each subquery individually
 func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 	// If no whitelist, allow everything (backward compatibility)
 	if len(p.whitelist) == 0 {
 		return true
 	}
 
-	// Check each whitelist pattern (case-insensitive)
+	// Check if this looks like a PL/SQL script (contains multiple statements or blocks)
+	if p.isPLSQLScript(query) {
+		// Use subquery validation for PL/SQL scripts
+		validator := security.NewSubqueryValidator()
+		validationResult := validator.ValidateScript(query, p.whitelist)
+
+		// Log subquery validation results
+		_ = audit.Log(p.auditLogPath, p.username, "plsql_subquery_validation", p.config.Name, map[string]interface{}{
+			"connection_id": p.connectionID,
+			"total_queries": validationResult.TotalQueries,
+			"allowed_count": validationResult.AllowedCount,
+			"blocked_count": validationResult.BlockedCount,
+			"is_allowed":    validationResult.IsAllowed,
+		})
+
+		return validationResult.IsAllowed
+	}
+
+	// For single queries, use the original logic
 	for _, pattern := range p.whitelist {
 		// Compile with case-insensitive flag
 		re, err := regexp.Compile("(?i)" + pattern)
@@ -793,6 +813,39 @@ func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 	}
 
 	return false
+}
+
+// isPLSQLScript checks if a query looks like a PL/SQL script with multiple statements
+func (p *PostgresAuthProxy) isPLSQLScript(query string) bool {
+	// Check for multiple semicolons (indicating multiple statements)
+	semicolonCount := strings.Count(query, ";")
+	if semicolonCount > 1 {
+		return true
+	}
+
+	// Check for PL/SQL block patterns
+	upperQuery := strings.ToUpper(strings.TrimSpace(query))
+	if strings.HasPrefix(upperQuery, "BEGIN") && strings.HasSuffix(upperQuery, "END") {
+		return true
+	}
+
+	// Check for procedure/function creation
+	if strings.Contains(upperQuery, "CREATE PROCEDURE") ||
+		strings.Contains(upperQuery, "CREATE FUNCTION") ||
+		strings.Contains(upperQuery, "CREATE OR REPLACE") {
+		return true
+	}
+
+	// Check for multiple SQL statements (basic heuristic)
+	statements := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "EXECUTE"}
+	statementCount := 0
+	for _, stmt := range statements {
+		if strings.Contains(upperQuery, stmt) {
+			statementCount++
+		}
+	}
+
+	return statementCount > 1
 }
 
 // sendQueryBlockedError sends a proper PostgreSQL error response to the client for blocked queries

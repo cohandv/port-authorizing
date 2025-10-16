@@ -602,3 +602,180 @@ th {
     border-left: 4px solid #007bff;
 }
 
+/* Subquery Validation Styles */
+.subquery-validation {
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    background: #f9f9f9;
+}
+
+.validation-summary {
+    margin-bottom: 15px;
+}
+
+.validation-stats {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.stat-item.allowed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.stat-item.blocked {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.subqueries-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.subquery-item {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 12px;
+    background: white;
+}
+
+.subquery-item.allowed {
+    border-left: 4px solid #28a745;
+}
+
+.subquery-item.blocked {
+    border-left: 4px solid #dc3545;
+}
+
+.subquery-item.risk-high {
+    background: #fff5f5;
+}
+
+.subquery-item.risk-medium {
+    background: #fffbf0;
+}
+
+.subquery-item.risk-low {
+    background: #f0fff4;
+}
+
+.subquery-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.subquery-number {
+    background: #6c757d;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.subquery-type {
+    background: #17a2b8;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.subquery-status {
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.subquery-status.allowed {
+    color: #28a745;
+}
+
+.subquery-status.blocked {
+    color: #dc3545;
+}
+
+.risk-level {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.risk-level.risk-high {
+    background: #dc3545;
+    color: white;
+}
+
+.risk-level.risk-medium {
+    background: #ffc107;
+    color: #212529;
+}
+
+.risk-level.risk-low {
+    background: #28a745;
+    color: white;
+}
+
+.subquery-content {
+    margin: 8px 0;
+}
+
+.subquery-code {
+    display: block;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.subquery-blocked {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+.subquery-allowed {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+}
+
+.suggestions {
+    margin-top: 8px;
+}
+
+.suggestions ul {
+    margin: 5px 0 0 20px;
+    padding: 0;
+}
+
+.suggestions li {
+    margin: 3px 0;
+    font-size: 0.9em;
+}
+

@@ -1043,6 +1043,69 @@ function displayPolicyTestResults(result) {
         </div>
     `;
 
+    // Add subquery validation results for database queries
+    if (result.subquery_validation) {
+        const validation = result.subquery_validation;
+        html += `
+            <div class="subquery-validation">
+                <h4>Subquery Validation</h4>
+                <div class="validation-summary">
+                    <div class="validation-stats">
+                        <span class="stat-item ${validation.is_allowed ? 'allowed' : 'blocked'}">
+                            <strong>${validation.is_allowed ? '✅ ALL QUERIES ALLOWED' : '❌ SOME QUERIES BLOCKED'}</strong>
+                        </span>
+                        <span class="stat-item">Total: ${validation.total_queries}</span>
+                        <span class="stat-item allowed">Allowed: ${validation.allowed_count}</span>
+                        <span class="stat-item blocked">Blocked: ${validation.blocked_count}</span>
+                    </div>
+                </div>
+                <div class="subqueries-list">
+        `;
+
+        validation.subqueries.forEach((subquery, index) => {
+            const statusClass = subquery.is_allowed ? 'allowed' : 'blocked';
+            const riskClass = `risk-${subquery.risk_level}`;
+
+            html += `
+                <div class="subquery-item ${statusClass} ${riskClass}">
+                    <div class="subquery-header">
+                        <span class="subquery-number">#${index + 1}</span>
+                        <span class="subquery-type">${subquery.subquery.type.toUpperCase()}</span>
+                        <span class="subquery-status ${statusClass}">
+                            ${subquery.is_allowed ? '✅ ALLOWED' : '❌ BLOCKED'}
+                        </span>
+                        <span class="risk-level ${riskClass}">${subquery.risk_level.toUpperCase()}</span>
+                    </div>
+                    <div class="subquery-content">
+                        <code class="subquery-code">${subquery.subquery.query}</code>
+                    </div>
+                    ${!subquery.is_allowed ? `
+                        <div class="subquery-blocked">
+                            <strong>Blocked by:</strong> ${subquery.blocked_by || 'No matching pattern'}
+                            ${subquery.suggestions && subquery.suggestions.length > 0 ? `
+                                <div class="suggestions">
+                                    <strong>Suggestions:</strong>
+                                    <ul>
+                                        ${subquery.suggestions.map(s => `<li>${s}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : `
+                        <div class="subquery-allowed">
+                            <strong>Matched by:</strong> ${subquery.matched_by || 'No whitelist'}
+                        </div>
+                    `}
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
     if (result.matchingPolicies && result.matchingPolicies.length > 0) {
         html += `
             <div class="matching-policies">

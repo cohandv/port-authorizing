@@ -1,3 +1,12 @@
+## [1.10.0](https://github.com/cohandv/port-authorizing/compare/v1.9.1...v1.10.0) (2025-10-16)
+
+
+### Features
+
+* enhanced the policy validator ([9f8afa1](https://github.com/cohandv/port-authorizing/commit/9f8afa18a42be953da273f610b5da71010a0b50e))
+* improved proxy of https and dashboard ([a443cfe](https://github.com/cohandv/port-authorizing/commit/a443cfeafd9e5ad3f0f996969cdb0c7abbe66474))
+* plsql parser for individual permissions checker ([4e1e62e](https://github.com/cohandv/port-authorizing/commit/4e1e62e4d824f32b9fe70ebdc0f4d01a3e17da4a))
+
 ## [1.9.1](https://github.com/cohandv/port-authorizing/compare/v1.9.0...v1.9.1) (2025-10-16)
 
 

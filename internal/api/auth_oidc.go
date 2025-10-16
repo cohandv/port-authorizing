@@ -100,7 +100,7 @@ func (s *Server) handleOIDCWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if oidcProvider == nil {
-		ws.WriteJSON(map[string]string{"error": "OIDC provider not configured"})
+		_ = ws.WriteJSON(map[string]string{"error": "OIDC provider not configured"})
 		return
 	}
 
@@ -108,7 +108,7 @@ func (s *Server) handleOIDCWebSocket(w http.ResponseWriter, r *http.Request) {
 	redirectURL := s.config.Auth.Providers[0].Config["redirect_url"]
 	authURL, err := oidcProvider.GetAuthorizationURL(sessionID, redirectURL)
 	if err != nil {
-		ws.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to generate auth URL: %v", err)})
+		_ = ws.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to generate auth URL: %v", err)})
 		return
 	}
 

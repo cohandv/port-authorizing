@@ -3,51 +3,13 @@ package cli
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os/exec"
 	"runtime"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
-
-// serverInfo represents server configuration
-type serverInfo struct {
-	BaseURL       string             `json:"base_url"`
-	AuthProviders []authProviderInfo `json:"auth_providers"`
-}
-
-// authProviderInfo represents auth provider info
-type authProviderInfo struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	Enabled     bool   `json:"enabled"`
-	RedirectURL string `json:"redirect_url,omitempty"` // Where OIDC provider redirects to server
-}
-
-// fetchServerInfo retrieves server configuration
-func fetchServerInfo(apiURL string) (*serverInfo, error) {
-	resp, err := http.Get(fmt.Sprintf("%s/api/info", apiURL))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch server info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("server returned error: %s", string(body))
-	}
-
-	var info serverInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return nil, fmt.Errorf("failed to parse server info: %w", err)
-	}
-
-	return &info, nil
-}
 
 // runOIDCLogin performs browser-based OIDC authentication using WebSocket
 func runOIDCLogin(apiURL, contextName string) error {
@@ -95,7 +57,9 @@ func runOIDCLogin(apiURL, contextName string) error {
 	fmt.Println("")
 
 	// Wait for token via WebSocket with timeout
-	ws.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	if err := ws.SetReadDeadline(time.Now().Add(5 * time.Minute)); err != nil {
+		return fmt.Errorf("failed to set read deadline: %w", err)
+	}
 
 	var loginResp loginResponse
 	if err := ws.ReadJSON(&loginResp); err != nil {

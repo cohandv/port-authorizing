@@ -20,7 +20,6 @@ type OIDCProvider struct {
 	verifier      *oidc.IDTokenVerifier
 	rolesClaim    string
 	usernameClaim string
-	auditLogPath  string
 }
 
 // NewOIDCProvider creates a new OIDC provider
@@ -275,13 +274,13 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	token, err := p.oauth2Config.Exchange(ctx, code)
 	if err != nil {
 		_ = audit.Log("stdout", "system", "oidc_exchange_failed", "oidc", map[string]interface{}{
-			"error":       err.Error(),
-			"error_type":  fmt.Sprintf("%T", err),
+			"error":            err.Error(),
+			"error_type":       fmt.Sprintf("%T", err),
 			"scopes_requested": p.oauth2Config.Scopes,
 		})
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}
-	
+
 	// Log detailed token information
 	tokenExtras := map[string]interface{}{}
 	if token.Extra("error") != nil {
@@ -290,11 +289,11 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	if token.Extra("error_description") != nil {
 		tokenExtras["error_description"] = token.Extra("error_description")
 	}
-	
+
 	_ = audit.Log("stdout", "system", "oidc_exchange_success", "oidc", map[string]interface{}{
 		"has_access_token": token.AccessToken != "",
 		"token_type":       token.TokenType,
-		"expires_in":       token.Expiry.Sub(time.Now()).Seconds(),
+		"expires_in":       time.Until(token.Expiry).Seconds(),
 		"scopes_requested": p.oauth2Config.Scopes,
 		"token_extras":     tokenExtras,
 	})

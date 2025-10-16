@@ -1,3 +1,18 @@
+## [1.11.0](https://github.com/cohandv/port-authorizing/compare/v1.10.0...v1.11.0) (2025-10-16)
+
+
+### Features
+
+* improved approve/reject ([bafb141](https://github.com/cohandv/port-authorizing/commit/bafb141a777a594de9ed79fa9144b596de611ad6))
+
+
+### Bug Fixes
+
+* ignore main latest for now ([c72f1e3](https://github.com/cohandv/port-authorizing/commit/c72f1e3fb8a3cc1496371932093659c8575f229c))
+* linting ([36ceca2](https://github.com/cohandv/port-authorizing/commit/36ceca27c7b1e950c593c06fe365e753b167f179))
+* oidc test ([fad3d5b](https://github.com/cohandv/port-authorizing/commit/fad3d5b9cbcb3d2803ef6dc2405ec401e21981a4))
+* some minor changes ([fef3d70](https://github.com/cohandv/port-authorizing/commit/fef3d702a396ee9d3fa0cf134bb1ba0550511809))
+
 ## [1.10.0](https://github.com/cohandv/port-authorizing/compare/v1.9.1...v1.10.0) (2025-10-16)
 
 

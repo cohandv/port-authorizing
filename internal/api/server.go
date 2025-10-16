@@ -152,6 +152,11 @@ func (s *Server) GetConfig() *config.Config {
 	return s.config
 }
 
+// LoadConfigFromStorage loads the latest configuration from the storage backend
+func (s *Server) LoadConfigFromStorage() (*config.Config, error) {
+	return s.storageBackend.Load(context.Background())
+}
+
 // setupRoutes configures all API routes
 func (s *Server) setupRoutes() {
 	// Apply CORS middleware to all routes (allow all origins)

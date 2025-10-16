@@ -36,6 +36,22 @@ func RunServer(cmd *cobra.Command, args []string) error {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 
+	// Load the latest configuration from storage backend if configured
+	if cfg.Storage != nil {
+		log.Println("Loading latest configuration from storage backend...")
+		latestCfg, err := server.LoadConfigFromStorage()
+		if err != nil {
+			log.Printf("Warning: Failed to load config from storage backend: %v", err)
+			log.Println("Using initial configuration from file")
+		} else {
+			log.Println("Successfully loaded configuration from storage backend")
+			// Reload the server with the latest config
+			if err := server.ReloadConfig(latestCfg); err != nil {
+				log.Printf("Warning: Failed to reload config: %v", err)
+			}
+		}
+	}
+
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

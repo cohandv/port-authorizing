@@ -265,7 +265,7 @@ func (k *K8sBackend) writeResource(ctx context.Context, name, data, comment stri
 		}
 
 		// Update existing
-		cm.ObjectMeta.ResourceVersion = existing.ObjectMeta.ResourceVersion
+		cm.ResourceVersion = existing.ResourceVersion
 		_, err = k.client.CoreV1().ConfigMaps(k.namespace).Update(ctx, cm, metav1.UpdateOptions{})
 		return err
 	}
@@ -290,7 +290,7 @@ func (k *K8sBackend) writeResource(ctx context.Context, name, data, comment stri
 	}
 
 	// Update existing
-	secret.ObjectMeta.ResourceVersion = existing.ObjectMeta.ResourceVersion
+	secret.ResourceVersion = existing.ResourceVersion
 	_, err = k.client.CoreV1().Secrets(k.namespace).Update(ctx, secret, metav1.UpdateOptions{})
 	return err
 }

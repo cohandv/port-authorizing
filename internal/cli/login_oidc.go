@@ -33,7 +33,12 @@ func fetchServerInfo(apiURL string) (*serverInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch server info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Ignore close errors as they don't affect the function result
+			_ = err
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

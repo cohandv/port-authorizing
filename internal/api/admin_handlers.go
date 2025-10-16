@@ -91,14 +91,14 @@ func (s *Server) handleRollbackConfig(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	versionID := vars["id"]
 
-	cfg, err := s.storageBackend.Rollback(r.Context(), versionID)
+	_, err := s.storageBackend.Rollback(r.Context(), versionID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to rollback: %v", err))
 		return
 	}
 
 	// Load the rolled back configuration
-	cfg, err = s.storageBackend.Load(r.Context())
+	cfg, err := s.storageBackend.Load(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to load configuration: %v", err))
 		return

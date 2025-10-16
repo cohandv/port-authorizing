@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/cohandv/port-authorizing/compare/v1.9.0...v1.9.1) (2025-10-16)
+
+
+### Bug Fixes
+
+* loading config from cm on the api ([7dd595d](https://github.com/cohandv/port-authorizing/commit/7dd595da0b953d681446ccf0aed6095da0c55537))
+
 ## [1.9.0](https://github.com/cohandv/port-authorizing/compare/v1.8.0...v1.9.0) (2025-10-16)
 
 

@@ -43,6 +43,7 @@
             <button class="tab-button" onclick="showTab('connections', this)">Connections</button>
             <button class="tab-button" onclick="showTab('users', this)">Users & Roles</button>
             <button class="tab-button" onclick="showTab('policies', this)">Policies</button>
+            <button class="tab-button" onclick="showTab('policy-tester', this)">Policy Tester</button>
             <button class="tab-button" onclick="showTab('audit', this)">Audit Logs</button>
             <button class="tab-button" onclick="showTab('versions', this)">Config Versions</button>
         </nav>
@@ -305,6 +306,72 @@
                         </thead>
                         <tbody id="versions-list"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Policy Tester Tab -->
+            <div id="policy-tester" class="tab-content">
+                <div class="section-header">
+                    <h2>Policy Tester</h2>
+                    <p>Test which policies apply to a specific connection and role combination</p>
+                </div>
+                <div class="form-container">
+                    <h3>Test Policy Access</h3>
+                    <form id="policyTestForm" onsubmit="testPolicyAccess(event)">
+                        <div class="form-group">
+                            <label>Connection:</label>
+                            <select id="test-connection" required onchange="autoDetectQueryType()">
+                                <option value="">Select a connection...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Role:</label>
+                            <input type="text" id="test-role" required placeholder="e.g., admin, developer, user">
+                        </div>
+                        <div class="form-group">
+                            <label>Query Type:</label>
+                            <select id="test-query-type" onchange="toggleQueryFields()">
+                                <option value="http">HTTP Request</option>
+                                <option value="database">Database Query</option>
+                            </select>
+                            <small id="query-type-hint" style="color: #666; font-style: italic;"></small>
+                        </div>
+
+                        <!-- HTTP fields -->
+                        <div id="http-fields">
+                            <div class="form-group">
+                                <label>HTTP Method (optional):</label>
+                                <select id="test-method">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                    <option value="PATCH">PATCH</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>HTTP Path (optional):</label>
+                                <input type="text" id="test-path" placeholder="e.g., /api/users, /api/data">
+                            </div>
+                        </div>
+
+                        <!-- Database fields -->
+                        <div id="database-fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Database Query:</label>
+                                <textarea id="test-query" rows="4" placeholder="SELECT * FROM users WHERE id = 1&#10;BEGIN&#10;  -- PL/SQL block&#10;  UPDATE users SET last_login = SYSDATE;&#10;END;"></textarea>
+                                <small>Enter SQL or PL/SQL query to test against whitelist patterns</small>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit">Test Access</button>
+                        </div>
+                    </form>
+                </div>
+                <div id="policy-test-results" style="display: none;">
+                    <h3>Test Results</h3>
+                    <div id="test-results-content"></div>
                 </div>
             </div>
         </main>

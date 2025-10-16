@@ -216,6 +216,9 @@ func (s *Server) setupRoutes() {
 	adminAPI.HandleFunc("/policies/{name}", s.handleUpdatePolicy).Methods("PUT", "OPTIONS")
 	adminAPI.HandleFunc("/policies/{name}", s.handleDeletePolicy).Methods("DELETE", "OPTIONS")
 
+	// Policy tester
+	adminAPI.HandleFunc("/policy-test", s.handlePolicyTest).Methods("POST", "OPTIONS")
+
 	// Audit logs
 	adminAPI.HandleFunc("/audit/logs", s.handleGetAuditLogs).Methods("GET", "OPTIONS")
 	adminAPI.HandleFunc("/audit/stats", s.handleGetAuditStats).Methods("GET", "OPTIONS")

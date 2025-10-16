@@ -116,6 +116,9 @@ async function loadTabData(tabName) {
         case 'versions':
             await loadVersions();
             break;
+        case 'policy-tester':
+            initPolicyTester();
+            break;
     }
 }
 
@@ -898,4 +901,202 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Policy Tester Functions
+
+// Load connections for the policy tester dropdown
+async function loadPolicyTesterConnections() {
+    try {
+        const connections = await apiCall('/connections');
+        const select = document.getElementById('test-connection');
+        select.innerHTML = '<option value="">Select a connection...</option>';
+
+        connections.forEach(conn => {
+            const option = document.createElement('option');
+            option.value = conn.name;
+            option.textContent = `${conn.name} (${conn.type})`;
+            option.dataset.connectionType = conn.type; // Store connection type for auto-detection
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load connections for policy tester:', error);
+    }
+}
+
+// Auto-detect query type based on connection selection
+function autoDetectQueryType() {
+    const connectionSelect = document.getElementById('test-connection');
+    const queryTypeSelect = document.getElementById('test-query-type');
+    const hintElement = document.getElementById('query-type-hint');
+    const selectedOption = connectionSelect.options[connectionSelect.selectedIndex];
+
+    if (selectedOption && selectedOption.dataset.connectionType) {
+        const connectionType = selectedOption.dataset.connectionType;
+
+        // Auto-detect query type based on connection type
+        if (connectionType === 'postgres' || connectionType === 'oracle' || connectionType === 'mysql') {
+            queryTypeSelect.value = 'database';
+            hintElement.textContent = `Auto-detected: ${connectionType.toUpperCase()} connections use database queries`;
+        } else if (connectionType === 'http' || connectionType === 'https') {
+            queryTypeSelect.value = 'http';
+            hintElement.textContent = `Auto-detected: ${connectionType.toUpperCase()} connections use HTTP requests`;
+        } else {
+            // For TCP or unknown types, default to database (more common for testing)
+            queryTypeSelect.value = 'database';
+            hintElement.textContent = `Auto-detected: ${connectionType.toUpperCase()} connections default to database queries`;
+        }
+
+        // Update the UI to show appropriate fields
+        toggleQueryFields();
+    } else {
+        hintElement.textContent = '';
+    }
+}
+
+// Toggle query fields based on query type
+function toggleQueryFields() {
+    const queryType = document.getElementById('test-query-type').value;
+    const httpFields = document.getElementById('http-fields');
+    const databaseFields = document.getElementById('database-fields');
+
+    if (queryType === 'http') {
+        httpFields.style.display = 'block';
+        databaseFields.style.display = 'none';
+    } else {
+        httpFields.style.display = 'none';
+        databaseFields.style.display = 'block';
+    }
+}
+
+// Test policy access
+async function testPolicyAccess(event) {
+    event.preventDefault();
+
+    const connection = document.getElementById('test-connection').value;
+    const role = document.getElementById('test-role').value;
+    const queryType = document.getElementById('test-query-type').value;
+
+    if (!connection || !role) {
+        showNotification('Please select a connection and enter a role', 'error');
+        return;
+    }
+
+    try {
+        const testData = {
+            connection: connection,
+            role: role,
+            query_type: queryType
+        };
+
+        // Add query-specific fields based on type
+        if (queryType === 'http') {
+            const method = document.getElementById('test-method').value;
+            const path = document.getElementById('test-path').value;
+            testData.method = method;
+            testData.path = path || '/';
+        } else {
+            const query = document.getElementById('test-query').value;
+            if (!query.trim()) {
+                showNotification('Please enter a database query to test', 'error');
+                return;
+            }
+            testData.query = query;
+        }
+
+        const result = await apiCall('/policy-test', {
+            method: 'POST',
+            body: JSON.stringify(testData)
+        });
+
+        displayPolicyTestResults(result);
+    } catch (error) {
+        showNotification('Failed to test policy access: ' + error.message, 'error');
+    }
+}
+
+// Display policy test results
+function displayPolicyTestResults(result) {
+    const resultsDiv = document.getElementById('policy-test-results');
+    const contentDiv = document.getElementById('test-results-content');
+
+    let html = `
+        <div class="test-summary">
+            <h4>Access Summary</h4>
+            <div class="access-result ${result.hasAccess ? 'allowed' : 'denied'}">
+                <strong>${result.hasAccess ? '✅ ALLOWED' : '❌ DENIED'}</strong>
+            </div>
+        </div>
+
+        <div class="test-details">
+            <h4>Test Details</h4>
+            <table class="test-details-table">
+                <tr><td><strong>Connection:</strong></td><td>${result.connection}</td></tr>
+                <tr><td><strong>Connection Type:</strong></td><td>${result.connectionType || 'unknown'}</td></tr>
+                <tr><td><strong>Role:</strong></td><td>${result.role}</td></tr>
+                <tr><td><strong>Query Type:</strong></td><td>${result.query_type || 'http'}</td></tr>
+                ${result.query_type === 'database' ?
+                    `<tr><td><strong>Database Query:</strong></td><td><code style="white-space: pre-wrap; background: #f5f5f5; padding: 5px; display: block;">${result.query || 'N/A'}</code></td></tr>` :
+                    `<tr><td><strong>Method:</strong></td><td>${result.method || 'N/A'}</td></tr>
+                     <tr><td><strong>Path:</strong></td><td>${result.path || 'N/A'}</td></tr>`
+                }
+            </table>
+        </div>
+    `;
+
+    if (result.matchingPolicies && result.matchingPolicies.length > 0) {
+        html += `
+            <div class="matching-policies">
+                <h4>Matching Policies (${result.matchingPolicies.length})</h4>
+                <div class="policies-list">
+        `;
+
+        result.matchingPolicies.forEach(policy => {
+            html += `
+                <div class="policy-item">
+                    <div class="policy-name"><strong>${policy.name}</strong></div>
+                    <div class="policy-details">
+                        <span class="policy-roles">Roles: ${policy.roles.join(', ')}</span>
+                        <span class="policy-tags">Tags: ${policy.tags.length > 0 ? policy.tags.join(', ') : 'none'}</span>
+                        <span class="policy-match">Match: ${policy.tagMatch}</span>
+                    </div>
+                    <div class="policy-whitelist">
+                        <strong>Whitelist Rules:</strong>
+                        <ul>
+                            ${policy.whitelist.map(rule => `<li><code>${rule}</code></li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="no-policies">
+                <h4>No Matching Policies</h4>
+                <p>No policies were found that match the specified role and connection tags.</p>
+            </div>
+        `;
+    }
+
+    if (result.connectionTags && result.connectionTags.length > 0) {
+        html += `
+            <div class="connection-info">
+                <h4>Connection Information</h4>
+                <p><strong>Connection Tags:</strong> ${result.connectionTags.join(', ')}</p>
+            </div>
+        `;
+    }
+
+    contentDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+}
+
+// Initialize policy tester when tab is shown
+function initPolicyTester() {
+    loadPolicyTesterConnections();
+}
 

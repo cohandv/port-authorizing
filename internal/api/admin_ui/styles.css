@@ -465,3 +465,140 @@ th {
     }
 }
 
+/* Policy Tester Styles */
+.test-summary {
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: #f8f9fa;
+}
+
+.access-result {
+    font-size: 1.2em;
+    padding: 10px;
+    border-radius: 5px;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.access-result.allowed {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.access-result.denied {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.test-details {
+    margin-bottom: 20px;
+}
+
+.test-details-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.test-details-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.test-details-table td:first-child {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    width: 30%;
+}
+
+.matching-policies {
+    margin-bottom: 20px;
+}
+
+.policies-list {
+    margin-top: 10px;
+}
+
+.policy-item {
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 10px;
+    background-color: #f8f9fa;
+}
+
+.policy-name {
+    font-size: 1.1em;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+
+.policy-details {
+    margin-bottom: 10px;
+}
+
+.policy-details span {
+    display: inline-block;
+    margin-right: 15px;
+    padding: 2px 8px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.policy-roles {
+    background-color: #d1ecf1 !important;
+    color: #0c5460;
+}
+
+.policy-tags {
+    background-color: #fff3cd !important;
+    color: #856404;
+}
+
+.policy-match {
+    background-color: #d4edda !important;
+    color: #155724;
+}
+
+.policy-whitelist {
+    margin-top: 10px;
+}
+
+.policy-whitelist ul {
+    margin: 5px 0 0 0;
+    padding-left: 20px;
+}
+
+.policy-whitelist li {
+    margin-bottom: 3px;
+}
+
+.policy-whitelist code {
+    background-color: #e9ecef;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.no-policies {
+    text-align: center;
+    padding: 30px;
+    color: #6c757d;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px dashed #dee2e6;
+}
+
+.connection-info {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #e7f3ff;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+}
+

@@ -801,3 +801,169 @@ func sanitizeConfig(cfg *config.Config) map[string]interface{} {
 
 	return sanitized
 }
+
+// Policy Tester Handler
+
+// handlePolicyTest tests which policies apply to a specific connection and role combination
+func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
+	var testData struct {
+		Connection string `json:"connection"`
+		Role       string `json:"role"`
+		QueryType  string `json:"query_type"` // "http" or "database"
+		Method     string `json:"method"`     // for HTTP requests
+		Path       string `json:"path"`       // for HTTP requests
+		Query      string `json:"query"`      // for database queries
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&testData); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid test data format")
+		return
+	}
+
+	if testData.Connection == "" || testData.Role == "" {
+		respondError(w, http.StatusBadRequest, "Connection and role are required")
+		return
+	}
+
+	cfg := s.GetConfig()
+
+	// Find the connection
+	var connection *config.ConnectionConfig
+	for _, conn := range cfg.Connections {
+		if conn.Name == testData.Connection {
+			connection = &conn
+			break
+		}
+	}
+
+	if connection == nil {
+		respondError(w, http.StatusNotFound, "Connection not found")
+		return
+	}
+
+	// Find matching policies
+	var matchingPolicies []map[string]interface{}
+	hasAccess := false
+
+	// Auto-detect query type if not specified
+	queryType := testData.QueryType
+	if queryType == "" {
+		// Auto-detect based on connection type
+		if connection.Type == "postgres" || connection.Type == "oracle" || connection.Type == "mysql" {
+			queryType = "database"
+		} else if connection.Type == "http" || connection.Type == "https" {
+			queryType = "http"
+		} else {
+			// Default to database for TCP and unknown types
+			queryType = "database"
+		}
+	}
+
+	for _, policy := range cfg.Policies {
+		// Check if role matches
+		roleMatches := false
+		for _, policyRole := range policy.Roles {
+			if policyRole == testData.Role {
+				roleMatches = true
+				break
+			}
+		}
+
+		if !roleMatches {
+			continue
+		}
+
+		// Check if tags match (if connection has tags)
+		tagMatch := "no tags"
+		if len(connection.Tags) > 0 && len(policy.Tags) > 0 {
+			// Check if any connection tag matches any policy tag
+			for _, connTag := range connection.Tags {
+				for _, policyTag := range policy.Tags {
+					if connTag == policyTag {
+						tagMatch = "matched"
+						break
+					}
+				}
+				if tagMatch == "matched" {
+					break
+				}
+			}
+			if tagMatch != "matched" {
+				tagMatch = "no match"
+			}
+		} else if len(connection.Tags) == 0 && len(policy.Tags) == 0 {
+			tagMatch = "no tags required"
+		} else if len(connection.Tags) == 0 {
+			tagMatch = "connection has no tags"
+		} else {
+			tagMatch = "policy has no tags"
+		}
+
+		// If tags don't match, skip this policy
+		if len(connection.Tags) > 0 && len(policy.Tags) > 0 && tagMatch != "matched" {
+			continue
+		}
+
+		// This policy matches - add it to results
+		policyResult := map[string]interface{}{
+			"name":      policy.Name,
+			"roles":     policy.Roles,
+			"tags":      policy.Tags,
+			"tagMatch":  tagMatch,
+			"whitelist": policy.Whitelist,
+		}
+		matchingPolicies = append(matchingPolicies, policyResult)
+
+		// Check if this policy would allow access for the given query
+		var queryToTest string
+		var hasSpecificQuery bool
+
+		if queryType == "database" && testData.Query != "" {
+			// Database query
+			queryToTest = testData.Query
+			hasSpecificQuery = true
+		} else if queryType == "http" && testData.Method != "" && testData.Path != "" {
+			// HTTP request
+			queryToTest = fmt.Sprintf("%s %s", testData.Method, testData.Path)
+			hasSpecificQuery = true
+		}
+
+		if hasSpecificQuery {
+			// Use the authorization logic to check if access would be granted
+			whitelist := s.authz.GetWhitelistForConnection([]string{testData.Role}, testData.Connection)
+			if len(whitelist) > 0 {
+				// Check if the query matches any whitelist rule
+				if err := s.authz.ValidatePattern(queryToTest, whitelist); err == nil {
+					hasAccess = true
+				}
+			} else {
+				// No whitelist rules means access is allowed
+				hasAccess = true
+			}
+		} else {
+			// If no specific query provided, just having a matching policy means potential access
+			hasAccess = true
+		}
+	}
+
+	// If no specific query provided, having any matching policies means access
+	if (testData.QueryType == "http" && (testData.Method == "" || testData.Path == "")) ||
+		(testData.QueryType == "database" && testData.Query == "") {
+		hasAccess = len(matchingPolicies) > 0
+	}
+
+	result := map[string]interface{}{
+		"hasAccess":        hasAccess,
+		"connection":       testData.Connection,
+		"role":             testData.Role,
+		"query_type":       queryType, // Use the determined query type (auto-detected or specified)
+		"method":           testData.Method,
+		"path":             testData.Path,
+		"query":            testData.Query,
+		"matchingPolicies": matchingPolicies,
+		"connectionTags":   connection.Tags,
+		"connectionType":   connection.Type, // Include connection type for reference
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}

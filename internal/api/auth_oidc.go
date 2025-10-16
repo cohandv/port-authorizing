@@ -29,12 +29,6 @@ var stateStore = &oidcStateStore{
 	states: make(map[string]*oidcState),
 }
 
-var oidcUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins for CLI
-	},
-}
-
 // Clean up expired states periodically
 func init() {
 	go func() {
@@ -88,8 +82,8 @@ func (s *Server) handleOIDCWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upgrade to WebSocket
-	ws, err := oidcUpgrader.Upgrade(w, r, nil)
+	// Upgrade to WebSocket (reusing existing upgrader)
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return

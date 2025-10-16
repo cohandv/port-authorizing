@@ -22,11 +22,10 @@ type serverInfo struct {
 
 // authProviderInfo represents auth provider info
 type authProviderInfo struct {
-	Name           string `json:"name"`
-	Type           string `json:"type"`
-	Enabled        bool   `json:"enabled"`
-	RedirectURL    string `json:"redirect_url,omitempty"`     // Where Okta redirects to server
-	CLICallbackURL string `json:"cli_callback_url,omitempty"` // Where server redirects to CLI
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	RedirectURL string `json:"redirect_url,omitempty"` // Where OIDC provider redirects to server
 }
 
 // fetchServerInfo retrieves server configuration

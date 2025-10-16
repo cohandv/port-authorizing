@@ -42,6 +42,13 @@ async function apiCall(endpoint, options = {}) {
     return response.json();
 }
 
+// Helper function to escape HTML for safe display
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Show notification
 function showNotification(message, type = 'success') {
     const notification = document.getElementById('notification');
@@ -52,8 +59,57 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
+// Reset all forms when switching tabs
+function resetAllForms() {
+    // Hide and reset all form containers
+    const forms = [
+        'connection-form',
+        'user-form',
+        'policy-form',
+        'approval-pattern-form',
+        'providers-form'
+    ];
+    
+    forms.forEach(formId => {
+        const formContainer = document.getElementById(formId);
+        if (formContainer) {
+            formContainer.style.display = 'none';
+        }
+    });
+    
+    // Reset all actual form elements
+    document.querySelectorAll('form').forEach(form => {
+        if (form.id !== 'loginForm') { // Don't reset login form
+            form.reset();
+        }
+    });
+    
+    // Hide policy test results
+    const policyTestResults = document.getElementById('policy-test-results');
+    if (policyTestResults) {
+        policyTestResults.style.display = 'none';
+    }
+    
+    // Clear any hidden input fields (like edit mode indicators)
+    document.querySelectorAll('input[type="hidden"]').forEach(input => {
+        if (input.id !== 'login-username' && input.id !== 'login-password') {
+            input.value = '';
+        }
+    });
+}
+
 // Tab management
-function showTab(tabName, element) {
+function showTab(tabName, element, updateURL = true) {
+    // Update URL
+    if (updateURL && window.history) {
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tabName);
+        window.history.pushState({ tab: tabName }, '', url);
+    }
+
+    // Hide and reset all forms
+    resetAllForms();
+
     // Hide all tabs
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -109,6 +165,9 @@ async function loadTabData(tabName) {
             break;
         case 'policies':
             await loadPolicies();
+            break;
+        case 'approvals':
+            await loadApprovals();
             break;
         case 'audit':
             await loadAuditLogs();
@@ -205,19 +264,21 @@ async function loadConnections() {
         tbody.innerHTML = '';
 
         if (!connections || connections.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No connections configured</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No connections configured</td></tr>';
             return;
         }
 
         connections.forEach(conn => {
             const row = document.createElement('tr');
             const tags = conn.tags ? conn.tags.join(', ') : 'none';
+            const duration = conn.duration || 'default';
 
             row.innerHTML = `
                 <td>${conn.name || 'unnamed'}</td>
                 <td>${conn.type || 'unknown'}</td>
                 <td>${conn.host || '-'}</td>
                 <td>${conn.port || '-'}</td>
+                <td>${duration}</td>
                 <td>${tags}</td>
                 <td class="action-buttons">
                     <button onclick="editConnection('${conn.name}')">Edit</button>
@@ -237,10 +298,28 @@ function showConnectionForm() {
     document.getElementById('connection-form-title').textContent = 'Add Connection';
     document.getElementById('connectionForm').reset();
     document.getElementById('connection-original-name').value = '';
+    // Reset field visibility
+    updateConnectionFields();
 }
 
 function hideConnectionForm() {
     document.getElementById('connection-form').style.display = 'none';
+    document.getElementById('connectionForm').reset();
+}
+
+// Show/hide fields based on connection type
+function updateConnectionFields() {
+    const type = document.getElementById('conn-type').value;
+    const postgresFields = document.getElementById('postgres-fields');
+    
+    // Hide all type-specific fields first
+    postgresFields.style.display = 'none';
+    
+    // Show relevant fields based on type
+    if (type === 'postgres') {
+        postgresFields.style.display = 'block';
+    }
+    // For http/https, we infer the scheme from the type itself
 }
 
 async function editConnection(name) {
@@ -260,10 +339,24 @@ async function editConnection(name) {
         document.getElementById('conn-type').value = conn.type;
         document.getElementById('conn-host').value = conn.host;
         document.getElementById('conn-port').value = conn.port;
-        document.getElementById('conn-scheme').value = conn.scheme || 'http';
         document.getElementById('conn-tags').value = conn.tags ? conn.tags.join(', ') : '';
         document.getElementById('conn-backend-username').value = conn.backend_username || '';
         document.getElementById('conn-backend-database').value = conn.backend_database || '';
+        // Don't populate password field - let user enter new password or leave empty to keep existing
+        document.getElementById('conn-backend-password').value = '';
+        
+        // Populate duration (now comes as string from API)
+        document.getElementById('conn-duration').value = conn.duration || '';
+        
+        // Populate metadata as JSON string
+        if (conn.metadata && Object.keys(conn.metadata).length > 0) {
+            document.getElementById('conn-metadata').value = JSON.stringify(conn.metadata, null, 2);
+        } else {
+            document.getElementById('conn-metadata').value = '';
+        }
+        
+        // Update visible fields based on type
+        updateConnectionFields();
     } catch (error) {
         showNotification('Failed to load connection: ' + error.message, 'error');
     }
@@ -280,17 +373,53 @@ async function saveConnection(event) {
         .map(t => t.trim())
         .filter(t => t !== '');
 
+    const connType = document.getElementById('conn-type').value;
+    
     const connection = {
         name: document.getElementById('conn-name').value,
-        type: document.getElementById('conn-type').value,
+        type: connType,
         host: document.getElementById('conn-host').value,
         port: parseInt(document.getElementById('conn-port').value),
-        scheme: document.getElementById('conn-scheme').value,
-        tags: tags,
-        backend_username: document.getElementById('conn-backend-username').value,
-        backend_password: document.getElementById('conn-backend-password').value,
-        backend_database: document.getElementById('conn-backend-database').value
+        tags: tags
     };
+
+    // Add duration if provided
+    const duration = document.getElementById('conn-duration').value.trim();
+    if (duration) {
+        connection.duration = duration;
+    }
+
+    // Add metadata if provided
+    const metadataStr = document.getElementById('conn-metadata').value.trim();
+    if (metadataStr) {
+        try {
+            connection.metadata = JSON.parse(metadataStr);
+            
+            // Validate that metadata has a description field
+            if (!connection.metadata.description || typeof connection.metadata.description !== 'string') {
+                showNotification('Metadata must include a "description" field with a string value', 'error');
+                return;
+            }
+        } catch (e) {
+            showNotification('Invalid JSON in metadata field', 'error');
+            return;
+        }
+    }
+
+    // Add type-specific fields
+    if (connType === 'http' || connType === 'https') {
+        // Scheme is inferred from type
+        connection.scheme = connType;
+    } else if (connType === 'postgres') {
+        connection.backend_username = document.getElementById('conn-backend-username').value;
+        connection.backend_database = document.getElementById('conn-backend-database').value;
+        
+        // Only include password if it's provided (not empty)
+        const password = document.getElementById('conn-backend-password').value;
+        if (password) {
+            connection.backend_password = password;
+        }
+    }
 
     try {
         if (isEdit) {
@@ -1026,7 +1155,28 @@ function displayPolicyTestResults(result) {
                 <strong>${result.hasAccess ? '✅ ALLOWED' : '❌ DENIED'}</strong>
             </div>
         </div>
+    `;
 
+    // Add approval requirement information right after access summary
+    if (result.requiresApproval !== undefined) {
+        html += `
+            <div class="approval-info">
+                <h4>Approval Requirement</h4>
+                <div class="approval-status ${result.requiresApproval ? 'required' : 'not-required'}">
+                    <strong>${result.requiresApproval ? '⚠️ APPROVAL REQUIRED' : '✅ NO APPROVAL REQUIRED'}</strong>
+                    ${result.requiresApproval ? `
+                        <p>⏳ This request will require manual approval before execution.</p>
+                        <p><strong>Approval Timeout:</strong> ${result.approvalTimeout || 'N/A'}</p>
+                        <p style="margin-top: 10px; font-weight: 500;">The request will be sent to configured approval providers (Webhook/Slack) and will wait for approval before proceeding.</p>
+                    ` : `
+                        <p>✓ This request does not match any approval patterns and will execute immediately without requiring approval.</p>
+                    `}
+                </div>
+            </div>
+        `;
+    }
+
+    html += `
         <div class="test-details">
             <h4>Test Details</h4>
             <table class="test-details-table">
@@ -1162,4 +1312,245 @@ function displayPolicyTestResults(result) {
 function initPolicyTester() {
     loadPolicyTesterConnections();
 }
+
+// ============ Approval Management Functions ============
+
+async function loadApprovals() {
+    try {
+        const config = await apiCall('/approvals');
+        
+        // Update enabled checkbox
+        document.getElementById('approval-enabled').checked = config.enabled;
+        
+        // Store config for providers form
+        window.currentApprovalConfig = config;
+        
+        // Load patterns
+        const tbody = document.getElementById('approval-patterns-list');
+        if (config.patterns.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5">No approval patterns configured</td></tr>';
+        } else {
+            tbody.innerHTML = config.patterns.map(pattern => `
+                <tr>
+                    <td><code>${escapeHtml(pattern.pattern)}</code></td>
+                    <td>${pattern.tags ? pattern.tags.join(', ') : '<em>All connections</em>'}</td>
+                    <td>${pattern.tag_match || 'all'}</td>
+                    <td>${pattern.timeout_seconds}s</td>
+                    <td>
+                        <button onclick="editApprovalPattern(${pattern.index})">Edit</button>
+                        <button onclick="deleteApprovalPattern(${pattern.index})" class="danger">Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+        
+        // Show provider configuration
+        const providersInfo = document.getElementById('approval-providers-info');
+        let providersHTML = '<h5>Configured Providers:</h5><ul>';
+        
+        if (config.webhook && config.webhook.url) {
+            providersHTML += `<li><strong>Webhook:</strong> ${escapeHtml(config.webhook.url)}</li>`;
+        }
+        if (config.slack && config.slack.webhook_url) {
+            providersHTML += `<li><strong>Slack:</strong> Configured (webhook URL hidden for security)</li>`;
+        }
+        
+        if ((!config.webhook || !config.webhook.url) && (!config.slack || !config.slack.webhook_url)) {
+            providersHTML += '<li><em>No approval providers configured. Click "Configure Providers" to add webhook or Slack integration.</em></li>';
+        }
+        
+        providersHTML += '</ul>';
+        providersInfo.innerHTML = providersHTML;
+    } catch (error) {
+        showNotification('Failed to load approvals: ' + error.message, 'error');
+    }
+}
+
+async function toggleApprovalEnabled() {
+    const enabled = document.getElementById('approval-enabled').checked;
+    
+    try {
+        await apiCall('/approvals/enabled', {
+            method: 'PUT',
+            body: JSON.stringify({ enabled })
+        });
+        
+        showNotification(`Approvals ${enabled ? 'enabled' : 'disabled'} successfully`);
+    } catch (error) {
+        // Revert checkbox on error
+        document.getElementById('approval-enabled').checked = !enabled;
+        showNotification('Failed to update approval status: ' + error.message, 'error');
+    }
+}
+
+function showApprovalPatternForm() {
+    document.getElementById('approval-pattern-form').style.display = 'block';
+    document.getElementById('approval-pattern-form-title').textContent = 'Add Approval Pattern';
+    document.getElementById('approvalPatternForm').reset();
+    document.getElementById('approval-pattern-index').value = '';
+    document.getElementById('approval-timeout').value = '300';
+}
+
+function hideApprovalPatternForm() {
+    document.getElementById('approval-pattern-form').style.display = 'none';
+    document.getElementById('approvalPatternForm').reset();
+}
+
+async function editApprovalPattern(index) {
+    try {
+        const config = await apiCall('/approvals');
+        const pattern = config.patterns.find(p => p.index === index);
+        
+        if (!pattern) {
+            showNotification('Pattern not found', 'error');
+            return;
+        }
+        
+        document.getElementById('approval-pattern-form').style.display = 'block';
+        document.getElementById('approval-pattern-form-title').textContent = 'Edit Approval Pattern';
+        document.getElementById('approval-pattern-index').value = index;
+        document.getElementById('approval-pattern').value = pattern.pattern;
+        document.getElementById('approval-tags').value = pattern.tags ? pattern.tags.join(', ') : '';
+        document.getElementById('approval-tag-match').value = pattern.tag_match || 'all';
+        document.getElementById('approval-timeout').value = pattern.timeout_seconds;
+    } catch (error) {
+        showNotification('Failed to load pattern: ' + error.message, 'error');
+    }
+}
+
+async function saveApprovalPattern(event) {
+    event.preventDefault();
+    
+    const index = document.getElementById('approval-pattern-index').value;
+    const isEdit = index !== '';
+    
+    const tags = document.getElementById('approval-tags').value
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t !== '');
+    
+    const pattern = {
+        pattern: document.getElementById('approval-pattern').value,
+        tags: tags.length > 0 ? tags : null,
+        tag_match: document.getElementById('approval-tag-match').value,
+        timeout_seconds: parseInt(document.getElementById('approval-timeout').value)
+    };
+    
+    try {
+        if (isEdit) {
+            await apiCall(`/approvals/patterns/${index}`, {
+                method: 'PUT',
+                body: JSON.stringify(pattern)
+            });
+            showNotification('Approval pattern updated successfully');
+        } else {
+            await apiCall('/approvals/patterns', {
+                method: 'POST',
+                body: JSON.stringify(pattern)
+            });
+            showNotification('Approval pattern created successfully');
+        }
+        
+        hideApprovalPatternForm();
+        await loadApprovals();
+    } catch (error) {
+        showNotification('Failed to save approval pattern: ' + error.message, 'error');
+    }
+}
+
+async function deleteApprovalPattern(index) {
+    if (!confirm('Are you sure you want to delete this approval pattern?')) {
+        return;
+    }
+    
+    try {
+        await apiCall(`/approvals/patterns/${index}`, {
+            method: 'DELETE'
+        });
+        showNotification('Approval pattern deleted successfully');
+        await loadApprovals();
+    } catch (error) {
+        showNotification('Failed to delete approval pattern: ' + error.message, 'error');
+    }
+}
+
+function showProvidersForm() {
+    const config = window.currentApprovalConfig || {};
+    
+    // Populate form with current values
+    document.getElementById('provider-webhook-url').value = (config.webhook && config.webhook.url) || '';
+    document.getElementById('provider-slack-url').value = (config.slack && config.slack.webhook_url) || '';
+    
+    document.getElementById('providers-form').style.display = 'block';
+}
+
+function hideProvidersForm() {
+    document.getElementById('providers-form').style.display = 'none';
+    document.getElementById('providersForm').reset();
+}
+
+async function saveProviders(event) {
+    event.preventDefault();
+    
+    const webhookUrl = document.getElementById('provider-webhook-url').value.trim();
+    const slackUrl = document.getElementById('provider-slack-url').value.trim();
+    
+    const providers = {};
+    
+    // Only include non-empty URLs
+    if (webhookUrl) {
+        providers.webhook = { url: webhookUrl };
+    } else {
+        providers.webhook = { url: '' }; // Empty string to clear
+    }
+    
+    if (slackUrl) {
+        providers.slack = { webhook_url: slackUrl };
+    } else {
+        providers.slack = { webhook_url: '' }; // Empty string to clear
+    }
+    
+    try {
+        await apiCall('/approvals/providers', {
+            method: 'PUT',
+            body: JSON.stringify(providers)
+        });
+        
+        showNotification('Approval providers updated successfully');
+        hideProvidersForm();
+        await loadApprovals();
+    } catch (error) {
+        showNotification('Failed to update approval providers: ' + error.message, 'error');
+    }
+}
+
+// ============ URL Routing and Navigation ============
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', (event) => {
+    if (event.state && event.state.tab) {
+        showTab(event.state.tab, null, false);
+    } else {
+        // Check URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab') || 'dashboard';
+        showTab(tab, null, false);
+    }
+});
+
+// Initialize tab from URL on page load
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    
+    if (tab && document.getElementById(tab)) {
+        // Show tab from URL
+        showTab(tab, null, false);
+    } else {
+        // Default to dashboard, but set initial history state
+        const url = new URL(window.location);
+        url.searchParams.set('tab', 'dashboard');
+        window.history.replaceState({ tab: 'dashboard' }, '', url);
+    }
+});
 

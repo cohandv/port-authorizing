@@ -40,12 +40,32 @@
 
         <nav class="tabs">
             <button class="tab-button active" onclick="showTab('dashboard', this)">Dashboard</button>
-            <button class="tab-button" onclick="showTab('connections', this)">Connections</button>
-            <button class="tab-button" onclick="showTab('users', this)">Users & Roles</button>
-            <button class="tab-button" onclick="showTab('policies', this)">Policies</button>
-            <button class="tab-button" onclick="showTab('policy-tester', this)">Policy Tester</button>
+            
+            <div class="tab-group">
+                <div class="tab-group-header">Config</div>
+                <div class="tab-group-content">
+                    <button class="tab-button sub-tab" onclick="showTab('connections', this)">Connections</button>
+                    <button class="tab-button sub-tab" onclick="showTab('versions', this)">Versions</button>
+                </div>
+            </div>
+            
+            <div class="tab-group">
+                <div class="tab-group-header">Legacy</div>
+                <div class="tab-group-content">
+                    <button class="tab-button sub-tab" onclick="showTab('users', this)">Users</button>
+                </div>
+            </div>
+            
+            <div class="tab-group">
+                <div class="tab-group-header">Policies</div>
+                <div class="tab-group-content">
+                    <button class="tab-button sub-tab" onclick="showTab('policies', this)">Whitelisted</button>
+                    <button class="tab-button sub-tab" onclick="showTab('approvals', this)">Approvals</button>
+                    <button class="tab-button sub-tab" onclick="showTab('policy-tester', this)">Tester</button>
+                </div>
+            </div>
+            
             <button class="tab-button" onclick="showTab('audit', this)">Audit Logs</button>
-            <button class="tab-button" onclick="showTab('versions', this)">Config Versions</button>
         </nav>
 
         <main>
@@ -104,7 +124,8 @@
                         </div>
                         <div class="form-group">
                             <label>Type:</label>
-                            <select id="conn-type" required>
+                            <select id="conn-type" required onchange="updateConnectionFields()">
+                                <option value="">Select Type...</option>
                                 <option value="postgres">PostgreSQL</option>
                                 <option value="http">HTTP</option>
                                 <option value="https">HTTPS</option>
@@ -119,28 +140,41 @@
                             <label>Port:</label>
                             <input type="number" id="conn-port" required>
                         </div>
-                        <div class="form-group">
-                            <label>Scheme:</label>
-                            <select id="conn-scheme">
-                                <option value="http">HTTP</option>
-                                <option value="https">HTTPS</option>
-                            </select>
-                        </div>
+                        
                         <div class="form-group">
                             <label>Tags (comma-separated):</label>
                             <input type="text" id="conn-tags" placeholder="env:prod,team:backend">
                         </div>
+                        
+                        <!-- Duration -->
                         <div class="form-group">
-                            <label>Backend Username (optional):</label>
-                            <input type="text" id="conn-backend-username">
+                            <label>Duration (optional):</label>
+                            <input type="text" id="conn-duration" placeholder="e.g., 30m, 2h, 1h30m">
+                            <small style="color: #666; font-size: 0.85em;">Examples: 30m, 2h, 1h30m. Leave empty for default.</small>
                         </div>
+                        
+                        <!-- Metadata -->
                         <div class="form-group">
-                            <label>Backend Password (optional):</label>
-                            <input type="password" id="conn-backend-password">
+                            <label>Metadata (JSON, optional):</label>
+                            <textarea id="conn-metadata" rows="3" placeholder='{"description": "My connection", "team": "platform"}' style="font-family: monospace; font-size: 0.9em;"></textarea>
+                            <small style="color: #666; font-size: 0.85em;">Valid JSON object. Must include "description" field if provided.</small>
                         </div>
-                        <div class="form-group">
-                            <label>Backend Database (optional):</label>
-                            <input type="text" id="conn-backend-database">
+                        
+                        <!-- PostgreSQL specific fields -->
+                        <div id="postgres-fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Backend Username:</label>
+                                <input type="text" id="conn-backend-username">
+                            </div>
+                            <div class="form-group">
+                                <label>Backend Password:</label>
+                                <input type="password" id="conn-backend-password" placeholder="Leave empty to keep current password">
+                                <small style="color: #666; font-size: 0.85em;">Leave empty when editing to keep existing password</small>
+                            </div>
+                            <div class="form-group">
+                                <label>Backend Database:</label>
+                                <input type="text" id="conn-backend-database">
+                            </div>
                         </div>
                         <div class="form-actions">
                             <button type="submit">Save</button>
@@ -155,6 +189,7 @@
                             <th>Type</th>
                             <th>Host</th>
                             <th>Port</th>
+                            <th>Duration</th>
                             <th>Tags</th>
                             <th>Actions</th>
                         </tr>
@@ -306,6 +341,109 @@
                         </thead>
                         <tbody id="versions-list"></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Approvals Tab -->
+            <div id="approvals" class="tab-content">
+                <div class="section-header">
+                    <h2>Approval Workflows</h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="approval-enabled" onchange="toggleApprovalEnabled()">
+                            <span>Enable Approvals</span>
+                        </label>
+                        <button onclick="showApprovalPatternForm()">Add Pattern</button>
+                    </div>
+                </div>
+
+                <div id="approval-pattern-form" class="form-container" style="display: none;">
+                    <h3 id="approval-pattern-form-title">Add Approval Pattern</h3>
+                    <form id="approvalPatternForm" onsubmit="saveApprovalPattern(event)">
+                        <input type="hidden" id="approval-pattern-index">
+                        
+                        <div class="form-group">
+                            <label>Pattern (Regex):</label>
+                            <input type="text" id="approval-pattern" required placeholder="^DELETE /.*|^POST /admin/.*">
+                            <small>For HTTP: "^METHOD /path$". For SQL: "^DELETE FROM .*"</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tags (optional, comma-separated):</label>
+                            <input type="text" id="approval-tags" placeholder="env:prod, team:backend">
+                            <small>Leave empty to apply to all connections, or specify tags to restrict</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tag Match Mode:</label>
+                            <select id="approval-tag-match">
+                                <option value="all">All (default)</option>
+                                <option value="any">Any</option>
+                            </select>
+                            <small>"All" requires all tags to match, "Any" requires at least one</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Timeout (seconds):</label>
+                            <input type="number" id="approval-timeout" value="300" min="30" required>
+                            <small>How long to wait for approval before timing out</small>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit">Save</button>
+                            <button type="button" onclick="hideApprovalPatternForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container">
+                    <table id="approval-patterns-table">
+                        <thead>
+                            <tr>
+                                <th>Pattern</th>
+                                <th>Tags</th>
+                                <th>Tag Match</th>
+                                <th>Timeout</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="approval-patterns-list">
+                            <tr><td colspan="5">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="info-box" style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4>Approval Providers Configuration</h4>
+                        <button onclick="showProvidersForm()">Configure Providers</button>
+                    </div>
+                    
+                    <div id="providers-form" class="form-container" style="display: none; margin-top: 15px;">
+                        <h5>Edit Approval Providers</h5>
+                        <form id="providersForm" onsubmit="saveProviders(event)">
+                            <div class="form-group">
+                                <label>Webhook URL:</label>
+                                <input type="url" id="provider-webhook-url" placeholder="https://your-webhook-endpoint.com/approve">
+                                <small>HTTP endpoint to receive approval requests (leave empty to disable)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>Slack Webhook URL:</label>
+                                <input type="url" id="provider-slack-url" placeholder="https://hooks.slack.com/services/...">
+                                <small>Slack incoming webhook URL for approval notifications (leave empty to disable)</small>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit">Save Providers</button>
+                                <button type="button" onclick="hideProvidersForm()">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div id="approval-providers-info" style="margin-top: 10px;">
+                        <p>Loading provider configuration...</p>
+                    </div>
                 </div>
             </div>
 

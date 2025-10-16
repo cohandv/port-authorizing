@@ -220,6 +220,14 @@ func (s *Server) setupRoutes() {
 	// Policy tester
 	adminAPI.HandleFunc("/policy-test", s.handlePolicyTest).Methods("POST", "OPTIONS")
 
+	// Approval management
+	adminAPI.HandleFunc("/approvals", s.handleGetApprovalConfig).Methods("GET", "OPTIONS")
+	adminAPI.HandleFunc("/approvals/enabled", s.handleUpdateApprovalEnabled).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/approvals/providers", s.handleUpdateApprovalProviders).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/approvals/patterns", s.handleCreateApprovalPattern).Methods("POST", "OPTIONS")
+	adminAPI.HandleFunc("/approvals/patterns/{index}", s.handleUpdateApprovalPattern).Methods("PUT", "OPTIONS")
+	adminAPI.HandleFunc("/approvals/patterns/{index}", s.handleDeleteApprovalPattern).Methods("DELETE", "OPTIONS")
+
 	// Audit logs
 	adminAPI.HandleFunc("/audit/logs", s.handleGetAuditLogs).Methods("GET", "OPTIONS")
 	adminAPI.HandleFunc("/audit/stats", s.handleGetAuditStats).Methods("GET", "OPTIONS")

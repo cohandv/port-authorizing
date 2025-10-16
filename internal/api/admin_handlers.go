@@ -119,24 +119,106 @@ func (s *Server) handleRollbackConfig(w http.ResponseWriter, r *http.Request) {
 
 // Connection Management Handlers
 
+// ConnectionResponse is a connection config with duration as string for JSON
+type ConnectionResponse struct {
+	Name            string            `json:"name"`
+	Type            string            `json:"type"`
+	Host            string            `json:"host"`
+	Port            int               `json:"port"`
+	Scheme          string            `json:"scheme,omitempty"`
+	Duration        string            `json:"duration,omitempty"`
+	Tags            []string          `json:"tags,omitempty"`
+	Metadata        map[string]string `json:"metadata,omitempty"`
+	BackendUsername string            `json:"backend_username,omitempty"`
+	BackendPassword string            `json:"backend_password,omitempty"`
+	BackendDatabase string            `json:"backend_database,omitempty"`
+	Whitelist       []string          `json:"whitelist,omitempty"`
+}
+
+// toConnectionResponse converts ConnectionConfig to ConnectionResponse with duration as string
+func toConnectionResponse(conn config.ConnectionConfig) ConnectionResponse {
+	resp := ConnectionResponse{
+		Name:            conn.Name,
+		Type:            conn.Type,
+		Host:            conn.Host,
+		Port:            conn.Port,
+		Scheme:          conn.Scheme,
+		Tags:            conn.Tags,
+		Metadata:        conn.Metadata,
+		BackendUsername: conn.BackendUsername,
+		BackendPassword: conn.BackendPassword,
+		BackendDatabase: conn.BackendDatabase,
+		Whitelist:       conn.Whitelist,
+	}
+
+	// Convert duration to string format
+	if conn.Duration > 0 {
+		resp.Duration = conn.Duration.String()
+	}
+
+	return resp
+}
+
 // handleListAllConnections lists all configured connections (admin view)
 func (s *Server) handleListAllConnections(w http.ResponseWriter, r *http.Request) {
 	cfg := s.GetConfig()
-	respondJSON(w, http.StatusOK, cfg.Connections)
+
+	// Convert connections to response format with duration as string
+	connections := make([]ConnectionResponse, len(cfg.Connections))
+	for i, conn := range cfg.Connections {
+		connections[i] = toConnectionResponse(conn)
+	}
+
+	respondJSON(w, http.StatusOK, connections)
 }
 
 // handleCreateConnection creates a new connection
 func (s *Server) handleCreateConnection(w http.ResponseWriter, r *http.Request) {
-	var conn config.ConnectionConfig
-	if err := json.NewDecoder(r.Body).Decode(&conn); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid connection format")
+	// Decode into a generic map first to handle duration as string
+	var rawConn map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&rawConn); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
 		return
+	}
+
+	// Convert back to JSON and decode into ConnectionConfig, handling duration specially
+	var conn config.ConnectionConfig
+	jsonBytes, _ := json.Marshal(rawConn)
+
+	// Parse duration if provided as string
+	if durationStr, ok := rawConn["duration"].(string); ok && durationStr != "" {
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid duration format: %v. Use formats like 30m, 2h, 1h30m", err))
+			return
+		}
+		delete(rawConn, "duration")
+		jsonBytes, _ = json.Marshal(rawConn)
+		if err := json.Unmarshal(jsonBytes, &conn); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
+			return
+		}
+		conn.Duration = duration
+	} else {
+		if err := json.Unmarshal(jsonBytes, &conn); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
+			return
+		}
 	}
 
 	// Validate connection
 	if conn.Name == "" || conn.Type == "" || conn.Host == "" || conn.Port == 0 {
 		respondError(w, http.StatusBadRequest, "Missing required fields: name, type, host, port")
 		return
+	}
+
+	// Validate metadata has description if metadata is provided
+	if conn.Metadata != nil && len(conn.Metadata) > 0 {
+		description, ok := conn.Metadata["description"]
+		if !ok || description == "" {
+			respondError(w, http.StatusBadRequest, "Metadata must include a 'description' field")
+			return
+		}
 	}
 
 	cfg := s.GetConfig()
@@ -165,7 +247,7 @@ func (s *Server) handleCreateConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, conn)
+	respondJSON(w, http.StatusCreated, toConnectionResponse(conn))
 }
 
 // handleUpdateConnection updates an existing connection
@@ -173,10 +255,45 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	name := vars["name"]
 
-	var updatedConn config.ConnectionConfig
-	if err := json.NewDecoder(r.Body).Decode(&updatedConn); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid connection format")
+	// Decode into a generic map first to handle duration as string
+	var rawConn map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&rawConn); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
 		return
+	}
+
+	// Convert back to JSON and decode into ConnectionConfig, handling duration specially
+	var updatedConn config.ConnectionConfig
+	jsonBytes, _ := json.Marshal(rawConn)
+
+	// Parse duration if provided as string
+	if durationStr, ok := rawConn["duration"].(string); ok && durationStr != "" {
+		duration, err := time.ParseDuration(durationStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid duration format: %v. Use formats like 30m, 2h, 1h30m", err))
+			return
+		}
+		delete(rawConn, "duration")
+		jsonBytes, _ = json.Marshal(rawConn)
+		if err := json.Unmarshal(jsonBytes, &updatedConn); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
+			return
+		}
+		updatedConn.Duration = duration
+	} else {
+		if err := json.Unmarshal(jsonBytes, &updatedConn); err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid connection format: %v", err))
+			return
+		}
+	}
+
+	// Validate metadata has description if metadata is provided
+	if updatedConn.Metadata != nil && len(updatedConn.Metadata) > 0 {
+		description, ok := updatedConn.Metadata["description"]
+		if !ok || description == "" {
+			respondError(w, http.StatusBadRequest, "Metadata must include a 'description' field")
+			return
+		}
 	}
 
 	cfg := s.GetConfig()
@@ -189,6 +306,12 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 			if updatedConn.Name == "" {
 				updatedConn.Name = name
 			}
+
+			// Preserve backend_password if not provided (empty string means keep existing)
+			if updatedConn.BackendPassword == "" && conn.BackendPassword != "" {
+				updatedConn.BackendPassword = conn.BackendPassword
+			}
+
 			cfg.Connections[i] = updatedConn
 			found = true
 			break
@@ -213,7 +336,7 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	respondJSON(w, http.StatusOK, updatedConn)
+	respondJSON(w, http.StatusOK, toConnectionResponse(updatedConn))
 }
 
 // handleDeleteConnection deletes a connection
@@ -974,5 +1097,279 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 		result["subquery_validation"] = validationResult
 	}
 
+	// Check if approval is required
+	if s.approvalMgr != nil {
+		var requiresApproval bool
+		var approvalTimeout time.Duration
+
+		if queryType == "http" && testData.Method != "" && testData.Path != "" {
+			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Method, testData.Path, connection.Tags)
+		} else if queryType == "database" && testData.Query != "" {
+			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Query, "", connection.Tags)
+		}
+
+		result["requiresApproval"] = requiresApproval
+		if requiresApproval {
+			result["approvalTimeout"] = approvalTimeout.String()
+		}
+	}
+
 	respondJSON(w, http.StatusOK, result)
+}
+
+// Approval Management Handlers
+
+// ApprovalConfigResponse is the response for approval configuration
+type ApprovalConfigResponse struct {
+	Enabled  bool                          `json:"enabled"`
+	Patterns []ApprovalPatternResponse     `json:"patterns"`
+	Webhook  *config.WebhookApprovalConfig `json:"webhook,omitempty"`
+	Slack    *config.SlackApprovalConfig   `json:"slack,omitempty"`
+}
+
+// ApprovalPatternResponse represents an approval pattern with index
+type ApprovalPatternResponse struct {
+	Index          int      `json:"index"`
+	Pattern        string   `json:"pattern"`
+	Tags           []string `json:"tags,omitempty"`
+	TagMatch       string   `json:"tag_match,omitempty"`
+	TimeoutSeconds int      `json:"timeout_seconds"`
+}
+
+// handleGetApprovalConfig returns the approval configuration
+func (s *Server) handleGetApprovalConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.GetConfig()
+
+	patterns := make([]ApprovalPatternResponse, len(cfg.Approval.Patterns))
+	for i, p := range cfg.Approval.Patterns {
+		patterns[i] = ApprovalPatternResponse{
+			Index:          i,
+			Pattern:        p.Pattern,
+			Tags:           p.Tags,
+			TagMatch:       p.TagMatch,
+			TimeoutSeconds: p.TimeoutSeconds,
+		}
+	}
+
+	resp := ApprovalConfigResponse{
+		Enabled:  cfg.Approval.Enabled,
+		Patterns: patterns,
+		Webhook:  cfg.Approval.Webhook,
+		Slack:    cfg.Approval.Slack,
+	}
+
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// handleUpdateApprovalEnabled updates the approval enabled status
+func (s *Server) handleUpdateApprovalEnabled(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	cfg := s.GetConfig()
+	cfg.Approval.Enabled = req.Enabled
+
+	comment := fmt.Sprintf("Updated approval enabled status to %v", req.Enabled)
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	if err := s.ReloadConfig(cfg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Approval status updated successfully",
+		"enabled": req.Enabled,
+	})
+}
+
+// handleCreateApprovalPattern creates a new approval pattern
+func (s *Server) handleCreateApprovalPattern(w http.ResponseWriter, r *http.Request) {
+	var pattern config.ApprovalPatternConfig
+	if err := json.NewDecoder(r.Body).Decode(&pattern); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid pattern: %v", err))
+		return
+	}
+
+	// Validate pattern
+	if pattern.Pattern == "" {
+		respondError(w, http.StatusBadRequest, "Pattern is required")
+		return
+	}
+
+	if pattern.TimeoutSeconds <= 0 {
+		pattern.TimeoutSeconds = 300 // Default 5 minutes
+	}
+
+	cfg := s.GetConfig()
+	cfg.Approval.Patterns = append(cfg.Approval.Patterns, pattern)
+
+	comment := fmt.Sprintf("Added approval pattern: %s", pattern.Pattern)
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	if err := s.ReloadConfig(cfg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload: %v", err))
+		return
+	}
+
+	resp := ApprovalPatternResponse{
+		Index:          len(cfg.Approval.Patterns) - 1,
+		Pattern:        pattern.Pattern,
+		Tags:           pattern.Tags,
+		TagMatch:       pattern.TagMatch,
+		TimeoutSeconds: pattern.TimeoutSeconds,
+	}
+
+	respondJSON(w, http.StatusCreated, resp)
+}
+
+// handleUpdateApprovalPattern updates an existing approval pattern
+func (s *Server) handleUpdateApprovalPattern(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	indexStr := vars["index"]
+
+	var index int
+	if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid index")
+		return
+	}
+
+	var pattern config.ApprovalPatternConfig
+	if err := json.NewDecoder(r.Body).Decode(&pattern); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid pattern: %v", err))
+		return
+	}
+
+	// Validate pattern
+	if pattern.Pattern == "" {
+		respondError(w, http.StatusBadRequest, "Pattern is required")
+		return
+	}
+
+	if pattern.TimeoutSeconds <= 0 {
+		pattern.TimeoutSeconds = 300
+	}
+
+	cfg := s.GetConfig()
+	if index < 0 || index >= len(cfg.Approval.Patterns) {
+		respondError(w, http.StatusNotFound, "Pattern not found")
+		return
+	}
+
+	oldPattern := cfg.Approval.Patterns[index].Pattern
+	cfg.Approval.Patterns[index] = pattern
+
+	comment := fmt.Sprintf("Updated approval pattern from '%s' to '%s'", oldPattern, pattern.Pattern)
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	if err := s.ReloadConfig(cfg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload: %v", err))
+		return
+	}
+
+	resp := ApprovalPatternResponse{
+		Index:          index,
+		Pattern:        pattern.Pattern,
+		Tags:           pattern.Tags,
+		TagMatch:       pattern.TagMatch,
+		TimeoutSeconds: pattern.TimeoutSeconds,
+	}
+
+	respondJSON(w, http.StatusOK, resp)
+}
+
+// handleDeleteApprovalPattern deletes an approval pattern
+func (s *Server) handleDeleteApprovalPattern(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	indexStr := vars["index"]
+
+	var index int
+	if _, err := fmt.Sscanf(indexStr, "%d", &index); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid index")
+		return
+	}
+
+	cfg := s.GetConfig()
+	if index < 0 || index >= len(cfg.Approval.Patterns) {
+		respondError(w, http.StatusNotFound, "Pattern not found")
+		return
+	}
+
+	patternName := cfg.Approval.Patterns[index].Pattern
+	cfg.Approval.Patterns = append(cfg.Approval.Patterns[:index], cfg.Approval.Patterns[index+1:]...)
+
+	comment := fmt.Sprintf("Deleted approval pattern: %s", patternName)
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	if err := s.ReloadConfig(cfg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Approval pattern deleted successfully",
+	})
+}
+
+// handleUpdateApprovalProviders updates webhook and Slack approval providers
+func (s *Server) handleUpdateApprovalProviders(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Webhook *config.WebhookApprovalConfig `json:"webhook,omitempty"`
+		Slack   *config.SlackApprovalConfig   `json:"slack,omitempty"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("Invalid request: %v", err))
+		return
+	}
+
+	cfg := s.GetConfig()
+
+	// Update providers
+	if req.Webhook != nil {
+		if cfg.Approval.Webhook == nil {
+			cfg.Approval.Webhook = &config.WebhookApprovalConfig{}
+		}
+		cfg.Approval.Webhook.URL = req.Webhook.URL
+	}
+
+	if req.Slack != nil {
+		if cfg.Approval.Slack == nil {
+			cfg.Approval.Slack = &config.SlackApprovalConfig{}
+		}
+		cfg.Approval.Slack.WebhookURL = req.Slack.WebhookURL
+	}
+
+	comment := "Updated approval providers configuration"
+	if err := s.storageBackend.Save(r.Context(), cfg, comment); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to save: %v", err))
+		return
+	}
+
+	if err := s.ReloadConfig(cfg); err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload: %v", err))
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Approval providers updated successfully",
+	})
 }

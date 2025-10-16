@@ -83,16 +83,79 @@ header h1 {
 
 .tabs {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 5px;
     background-color: white;
-    padding: 10px;
+    padding: 10px 15px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+.tab-group {
+    position: relative;
+}
+
+.tab-group::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: transparent;
+    z-index: 999;
+    display: none;
+}
+
+.tab-group:hover::before {
+    display: block;
+}
+
+.tab-group-header {
+    font-size: 14px;
+    font-weight: 500;
+    color: #2c3e50;
+    padding: 10px 15px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.3s;
+    user-select: none;
+    background-color: transparent;
+    border: none;
+}
+
+.tab-group-header:hover {
+    background-color: #ecf0f1;
+}
+
+.tab-group-header::after {
+    content: ' ▼';
+    font-size: 10px;
+    color: #7f8c8d;
+    margin-left: 5px;
+}
+
+.tab-group-content {
+    display: none;
+    flex-direction: column;
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    background-color: white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    border-radius: 4px;
+    min-width: 180px;
+    z-index: 1000;
+    padding: 5px 0;
+}
+
+.tab-group:hover .tab-group-content {
+    display: flex;
 }
 
 .tab-button {
-    padding: 10px 20px;
+    padding: 10px 15px;
     border: none;
     background-color: transparent;
     color: #2c3e50;
@@ -101,6 +164,24 @@ header h1 {
     transition: all 0.3s;
     font-size: 14px;
     font-weight: 500;
+    white-space: nowrap;
+}
+
+.tab-button.sub-tab {
+    padding: 10px 15px;
+    font-size: 13px;
+    font-weight: 400;
+    width: 100%;
+    text-align: left;
+    border-radius: 0;
+}
+
+.tab-button.sub-tab:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.tab-button.sub-tab:last-child {
+    border-radius: 0 0 4px 4px;
 }
 
 .tab-button:hover {
@@ -439,12 +520,18 @@ th {
 
 /* Responsive */
 @media (max-width: 768px) {
-    .stats-grid {
-        grid-template-columns: 1fr;
-    }
-
     .tabs {
         flex-wrap: wrap;
+    }
+
+    .tab-group-content {
+        position: static;
+        box-shadow: none;
+        margin-top: 2px;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 
     .filters {
@@ -491,6 +578,46 @@ th {
     background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
+}
+
+/* Approval requirement styling */
+.approval-info {
+    margin-top: 20px;
+}
+
+.approval-info h4 {
+    margin-bottom: 10px;
+}
+
+.approval-status {
+    font-size: 1.2em;
+    padding: 15px;
+    border-radius: 5px;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.approval-status.required {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 2px solid #ffc107;
+}
+
+.approval-status.not-required {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.approval-status strong {
+    display: block;
+    font-size: 1.1em;
+    margin-bottom: 8px;
+}
+
+.approval-status p {
+    margin: 5px 0;
+    font-size: 0.9em;
 }
 
 .test-details {

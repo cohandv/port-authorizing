@@ -17,6 +17,7 @@ type Config struct {
 	Security    SecurityConfig     `yaml:"security"`
 	Logging     LoggingConfig      `yaml:"logging"`
 	Approval    *ApprovalConfig    `yaml:"approval,omitempty"`
+	Storage     *StorageConfig     `yaml:"storage,omitempty"`
 }
 
 // ServerConfig contains server settings
@@ -49,37 +50,37 @@ type AuthProviderConfig struct {
 
 // User represents a user account
 type User struct {
-	Username string   `yaml:"username"`
-	Password string   `yaml:"password"` // In production, use hashed passwords
-	Roles    []string `yaml:"roles"`
+	Username string   `yaml:"username" json:"username"`
+	Password string   `yaml:"password" json:"password"` // In production, use hashed passwords
+	Roles    []string `yaml:"roles" json:"roles"`
 }
 
 // ConnectionConfig defines an available connection endpoint
 type ConnectionConfig struct {
-	Name     string            `yaml:"name"`
-	Type     string            `yaml:"type"` // postgres, http, tcp
-	Host     string            `yaml:"host"`
-	Port     int               `yaml:"port"`
-	Scheme   string            `yaml:"scheme,omitempty"`   // for HTTP: http/https
-	Duration time.Duration     `yaml:"duration,omitempty"` // connection timeout duration
-	Tags     []string          `yaml:"tags,omitempty"`     // Tags for policy matching (env:prod, team:backend, etc.)
-	Metadata map[string]string `yaml:"metadata,omitempty"`
+	Name     string            `yaml:"name" json:"name"`
+	Type     string            `yaml:"type" json:"type"` // postgres, http, tcp
+	Host     string            `yaml:"host" json:"host"`
+	Port     int               `yaml:"port" json:"port"`
+	Scheme   string            `yaml:"scheme,omitempty" json:"scheme,omitempty"`     // for HTTP: http/https
+	Duration time.Duration     `yaml:"duration,omitempty" json:"duration,omitempty"` // connection timeout duration
+	Tags     []string          `yaml:"tags,omitempty" json:"tags,omitempty"`         // Tags for policy matching (env:prod, team:backend, etc.)
+	Metadata map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 	// Backend credentials (for protocols like Postgres where proxy re-authenticates)
-	BackendUsername string `yaml:"backend_username,omitempty"`
-	BackendPassword string `yaml:"backend_password,omitempty"`
-	BackendDatabase string `yaml:"backend_database,omitempty"`
+	BackendUsername string `yaml:"backend_username,omitempty" json:"backend_username,omitempty"`
+	BackendPassword string `yaml:"backend_password,omitempty" json:"backend_password,omitempty"`
+	BackendDatabase string `yaml:"backend_database,omitempty" json:"backend_database,omitempty"`
 	// Deprecated: use policies instead
-	Whitelist []string `yaml:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
+	Whitelist []string `yaml:"whitelist,omitempty" json:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
 }
 
 // RolePolicy defines access policies for roles
 type RolePolicy struct {
-	Name      string            `yaml:"name"`                // Policy name
-	Roles     []string          `yaml:"roles"`               // Which roles this policy applies to
-	Tags      []string          `yaml:"tags"`                // Connection tags this policy applies to (e.g., "env:dev", "team:backend")
-	TagMatch  string            `yaml:"tag_match,omitempty"` // "all" (default) or "any"
-	Whitelist []string          `yaml:"whitelist,omitempty"` // Allowed patterns for matched connections
-	Metadata  map[string]string `yaml:"metadata,omitempty"`  // Additional metadata
+	Name      string            `yaml:"name" json:"name"`                               // Policy name
+	Roles     []string          `yaml:"roles" json:"roles"`                             // Which roles this policy applies to
+	Tags      []string          `yaml:"tags" json:"tags"`                               // Connection tags this policy applies to (e.g., "env:dev", "team:backend")
+	TagMatch  string            `yaml:"tag_match,omitempty" json:"tag_match,omitempty"` // "all" (default) or "any"
+	Whitelist []string          `yaml:"whitelist,omitempty" json:"whitelist,omitempty"` // Allowed patterns for matched connections
+	Metadata  map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`   // Additional metadata
 }
 
 // SecurityConfig contains security settings
@@ -91,8 +92,9 @@ type SecurityConfig struct {
 
 // LoggingConfig contains logging settings
 type LoggingConfig struct {
-	AuditLogPath string `yaml:"audit_log_path"`
-	LogLevel     string `yaml:"log_level"`
+	AuditLogPath  string `yaml:"audit_log_path"`
+	LogLevel      string `yaml:"log_level"`
+	AuditMemoryMB int    `yaml:"audit_memory_mb,omitempty"` // Max memory for in-memory audit buffer (0 to disable, default 1MB)
 }
 
 // ApprovalConfig contains approval workflow settings

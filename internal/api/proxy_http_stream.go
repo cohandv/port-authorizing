@@ -229,7 +229,10 @@ func (w *streamResponseWriter) Write(data []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.writer.Write(data)
+	n, err := w.writer.Write(data)
+	// Flush immediately for streaming responses (especially HTTPS)
+	_ = w.writer.Flush()
+	return n, err
 }
 
 func (w *streamResponseWriter) WriteHeader(statusCode int) {

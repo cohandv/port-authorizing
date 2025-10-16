@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Port Authorizing - Admin</title>
+    <base href="/admin/">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Form (shown when not authenticated) -->
+    <div id="login-container" class="login-container" style="display: none;">
+        <div class="login-box">
+            <h1>Port Authorizing Admin</h1>
+            <p>Please login with your admin credentials</p>
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Username:</label>
+                    <input type="text" id="login-username" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <div id="login-error" class="error-message"></div>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App (shown when authenticated) -->
+    <div id="app-container" class="container" style="display: none;">
+        <header>
+            <h1>Port Authorizing Admin</h1>
+            <div class="user-info">
+                <span id="current-user"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-button active" onclick="showTab('dashboard', this)">Dashboard</button>
+            <button class="tab-button" onclick="showTab('connections', this)">Connections</button>
+            <button class="tab-button" onclick="showTab('users', this)">Users & Roles</button>
+            <button class="tab-button" onclick="showTab('policies', this)">Policies</button>
+            <button class="tab-button" onclick="showTab('policy-tester', this)">Policy Tester</button>
+            <button class="tab-button" onclick="showTab('audit', this)">Audit Logs</button>
+            <button class="tab-button" onclick="showTab('versions', this)">Config Versions</button>
+        </nav>
+
+        <main>
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-content active">
+                <div class="section-header">
+                    <div>
+                        <h2>System Status</h2>
+                        <p id="last-refresh" style="font-size: 0.9em; color: #666; margin-top: 5px;">
+                            Loading... <span style="color: #4CAF50;">● Auto-refresh: 5s</span>
+                        </p>
+                    </div>
+                    <button onclick="refreshDashboard()">🔄 Refresh</button>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Status</h3>
+                        <p id="system-status" class="stat-value">Loading...</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Connections</h3>
+                        <p id="active-connections" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Configured Connections</h3>
+                        <p id="configured-connections" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Policies</h3>
+                        <p id="total-policies" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Users</h3>
+                        <p id="total-users" class="stat-value">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Audit Events</h3>
+                        <p id="total-events" class="stat-value">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Connections Tab -->
+            <div id="connections" class="tab-content">
+                <div class="section-header">
+                    <h2>Connections</h2>
+                    <button onclick="showConnectionForm()">Add Connection</button>
+                </div>
+                <div id="connection-form" class="form-container" style="display: none;">
+                    <h3 id="connection-form-title">Add Connection</h3>
+                    <form id="connectionForm" onsubmit="saveConnection(event)">
+                        <input type="hidden" id="connection-original-name">
+                        <div class="form-group">
+                            <label>Name:</label>
+                            <input type="text" id="conn-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Type:</label>
+                            <select id="conn-type" required>
+                                <option value="postgres">PostgreSQL</option>
+                                <option value="http">HTTP</option>
+                                <option value="https">HTTPS</option>
+                                <option value="tcp">TCP</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Host:</label>
+                            <input type="text" id="conn-host" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Port:</label>
+                            <input type="number" id="conn-port" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Scheme:</label>
+                            <select id="conn-scheme">
+                                <option value="http">HTTP</option>
+                                <option value="https">HTTPS</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Tags (comma-separated):</label>
+                            <input type="text" id="conn-tags" placeholder="env:prod,team:backend">
+                        </div>
+                        <div class="form-group">
+                            <label>Backend Username (optional):</label>
+                            <input type="text" id="conn-backend-username">
+                        </div>
+                        <div class="form-group">
+                            <label>Backend Password (optional):</label>
+                            <input type="password" id="conn-backend-password">
+                        </div>
+                        <div class="form-group">
+                            <label>Backend Database (optional):</label>
+                            <input type="text" id="conn-backend-database">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit">Save</button>
+                            <button type="button" onclick="hideConnectionForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                <table id="connections-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Host</th>
+                            <th>Port</th>
+                            <th>Tags</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="connections-list"></tbody>
+                </table>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="users" class="tab-content">
+                <div class="section-header">
+                    <h2>Users & Roles</h2>
+                    <button onclick="showUserForm()">Add User</button>
+                </div>
+                <div id="user-form" class="form-container" style="display: none;">
+                    <h3 id="user-form-title">Add User</h3>
+                    <form id="userForm" onsubmit="saveUser(event)">
+                        <input type="hidden" id="user-original-username">
+                        <div class="form-group">
+                            <label>Username:</label>
+                            <input type="text" id="user-username" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Password:</label>
+                            <input type="password" id="user-password">
+                            <small>Leave blank to keep existing password (when editing)</small>
+                        </div>
+                        <div class="form-group">
+                            <label>Roles (comma-separated):</label>
+                            <input type="text" id="user-roles" placeholder="admin,developer">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit">Save</button>
+                            <button type="button" onclick="hideUserForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                <table id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Roles</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-list"></tbody>
+                </table>
+            </div>
+
+            <!-- Policies Tab -->
+            <div id="policies" class="tab-content">
+                <div class="section-header">
+                    <h2>Policies</h2>
+                    <button onclick="showPolicyForm()">Add Policy</button>
+                </div>
+                <div id="policy-form" class="form-container" style="display: none;">
+                    <h3 id="policy-form-title">Add Policy</h3>
+                    <form id="policyForm" onsubmit="savePolicy(event)">
+                        <input type="hidden" id="policy-original-name">
+                        <div class="form-group">
+                            <label>Name:</label>
+                            <input type="text" id="policy-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Roles (comma-separated):</label>
+                            <input type="text" id="policy-roles" required placeholder="developer,admin">
+                        </div>
+                        <div class="form-group">
+                            <label>Tags (comma-separated):</label>
+                            <input type="text" id="policy-tags" placeholder="env:prod,team:backend">
+                        </div>
+                        <div class="form-group">
+                            <label>Tag Match:</label>
+                            <select id="policy-tag-match">
+                                <option value="all">All (AND)</option>
+                                <option value="any">Any (OR)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Whitelist Patterns (one per line):</label>
+                            <textarea id="policy-whitelist" rows="5" placeholder="^SELECT.*&#10;^INSERT.*&#10;^GET /api/.*"></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit">Save</button>
+                            <button type="button" onclick="hidePolicyForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+                <table id="policies-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Roles</th>
+                            <th>Tags</th>
+                            <th>Tag Match</th>
+                            <th>Whitelist Rules</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="policies-list"></tbody>
+                </table>
+            </div>
+
+            <!-- Audit Logs Tab -->
+            <div id="audit" class="tab-content">
+                <h2>Audit Logs</h2>
+                <div class="filters">
+                    <input type="text" id="filter-username" placeholder="Filter by username">
+                    <input type="text" id="filter-action" placeholder="Filter by action">
+                    <input type="text" id="filter-connection" placeholder="Filter by connection">
+                    <button onclick="loadAuditLogs()">Apply Filters</button>
+                </div>
+                <div id="audit-logs" class="logs-container"></div>
+            </div>
+
+            <!-- Config Versions Tab -->
+            <div id="versions" class="tab-content">
+                <h2>Configuration Versions</h2>
+
+                <!-- Diff Viewer (hidden by default) -->
+                <div id="diff-viewer" class="diff-viewer" style="display: none;">
+                    <div class="diff-header">
+                        <h3>Configuration Diff</h3>
+                        <button onclick="closeDiffViewer()">Close</button>
+                    </div>
+                    <div class="diff-selector">
+                        <label>Compare:
+                            <select id="diff-version-a"></select>
+                        </label>
+                        <span style="margin: 0 10px;">vs</span>
+                        <label>
+                            <select id="diff-version-b"></select>
+                        </label>
+                        <button onclick="loadDiff()">Compare</button>
+                    </div>
+                    <div id="diff-content" class="diff-content"></div>
+                </div>
+
+                <!-- Versions Table -->
+                <div id="versions-table-container">
+                    <table id="versions-table">
+                        <thead>
+                            <tr>
+                                <th>Version</th>
+                                <th>Timestamp</th>
+                                <th>Comment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="versions-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Policy Tester Tab -->
+            <div id="policy-tester" class="tab-content">
+                <div class="section-header">
+                    <h2>Policy Tester</h2>
+                    <p>Test which policies apply to a specific connection and role combination</p>
+                </div>
+                <div class="form-container">
+                    <h3>Test Policy Access</h3>
+                    <form id="policyTestForm" onsubmit="testPolicyAccess(event)">
+                        <div class="form-group">
+                            <label>Connection:</label>
+                            <select id="test-connection" required onchange="autoDetectQueryType()">
+                                <option value="">Select a connection...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Role:</label>
+                            <input type="text" id="test-role" required placeholder="e.g., admin, developer, user">
+                        </div>
+                        <div class="form-group">
+                            <label>Query Type:</label>
+                            <select id="test-query-type" onchange="toggleQueryFields()">
+                                <option value="http">HTTP Request</option>
+                                <option value="database">Database Query</option>
+                            </select>
+                            <small id="query-type-hint" style="color: #666; font-style: italic;"></small>
+                        </div>
+
+                        <!-- HTTP fields -->
+                        <div id="http-fields">
+                            <div class="form-group">
+                                <label>HTTP Method (optional):</label>
+                                <select id="test-method">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                    <option value="PATCH">PATCH</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>HTTP Path (optional):</label>
+                                <input type="text" id="test-path" placeholder="e.g., /api/users, /api/data">
+                            </div>
+                        </div>
+
+                        <!-- Database fields -->
+                        <div id="database-fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Database Query:</label>
+                                <textarea id="test-query" rows="4" placeholder="SELECT * FROM users WHERE id = 1&#10;BEGIN&#10;  -- PL/SQL block&#10;  UPDATE users SET last_login = SYSDATE;&#10;END;"></textarea>
+                                <small>Enter SQL or PL/SQL query to test against whitelist patterns</small>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit">Test Access</button>
+                        </div>
+                    </form>
+                </div>
+                <div id="policy-test-results" style="display: none;">
+                    <h3>Test Results</h3>
+                    <div id="test-results-content"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+

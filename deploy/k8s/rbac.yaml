@@ -1,0 +1,45 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: port-authorizing
+  namespace: port-authorizing
+  labels:
+    app: port-authorizing
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: port-authorizing-config
+  namespace: port-authorizing
+  labels:
+    app: port-authorizing
+rules:
+  # Allow read/write ConfigMaps for config storage
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Allow read/write Secrets for config storage (optional)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: port-authorizing-config
+  namespace: port-authorizing
+  labels:
+    app: port-authorizing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: port-authorizing-config
+subjects:
+  - kind: ServiceAccount
+    name: port-authorizing
+    namespace: port-authorizing
+

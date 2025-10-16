@@ -7,6 +7,44 @@ import (
 	"os/exec"
 	"runtime"
 	"time"
+)
+
+// serverInfo represents server configuration
+type serverInfo struct {
+	BaseURL       string             `json:"base_url"`
+	AuthProviders []authProviderInfo `json:"auth_providers"`
+}
+
+// authProviderInfo represents auth provider info
+type authProviderInfo struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	RedirectURL string `json:"redirect_url,omitempty"`
+}
+
+// fetchServerInfo retrieves server configuration
+func fetchServerInfo(apiURL string) (*serverInfo, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/api/info", apiURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch server info: %w", err)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Ignore close errors as they don't affect the function result
+			_ = err
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned error: %s", string(body))
+	}
+
+	var info serverInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("failed to parse server info: %w", err)
+	}
 
 	"github.com/gorilla/websocket"
 )

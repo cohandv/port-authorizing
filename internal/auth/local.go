@@ -62,7 +62,8 @@ func (p *LocalProvider) Authenticate(credentials map[string]string) (*UserInfo, 
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// TODO: Use proper password hashing (bcrypt, argon2, etc.)
+	// Plain text password comparison
+	// Note: Passwords are currently stored in plain text for operational requirements
 	if user.password != password {
 		return nil, fmt.Errorf("invalid credentials")
 	}

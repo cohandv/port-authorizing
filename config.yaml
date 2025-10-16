@@ -1,215 +1,167 @@
+# Configuration saved at 2025-10-15T18:23:43-03:00
+# Updated user pepe (by pepe)
+
 server:
-  port: 8080
-  max_connection_duration: 2h
-  base_url: "http://localhost:8080"  # Base URL for approval callbacks
-
+    port: 8081
+    max_connection_duration: 2h0m0s
+    base_url: http://localhost:8080
 auth:
-  jwt_secret: "your-secret-key-change-this-in-production"
-  token_expiry: 30m
-
-  # Authentication providers
-  providers:
-    # Uncomment to enable Keycloak OIDC
-    - name: keycloak
-      type: oidc
-      enabled: true
-      config:
-        issuer: "http://localhost:8180/realms/portauth"
-        client_id: "port-authorizing"
-        client_secret: "your-client-secret-change-in-production"
-        redirect_url: "http://localhost:8080/api/auth/oidc/callback"
-        roles_claim: "roles"
-        username_claim: "preferred_username"
-
-    # Uncomment to enable LDAP
-    # - name: ldap
-    #   type: ldap
-    #   enabled: true
-    #   config:
-    #     url: "localhost:389"
-    #     bind_dn: "cn=admin,dc=portauth,dc=local"
-    #     bind_password: "adminpass"
-    #     user_base_dn: "ou=users,dc=portauth,dc=local"
-    #     user_filter: "(uid=%s)"
-    #     group_base_dn: "ou=groups,dc=portauth,dc=local"
-    #     group_filter: "(member=%s)"
-
-  # Local users (legacy support)
-  users:
-    - username: admin
-      password: admin123
+    jwt_secret: your-secret-key-change-this-in-production
+    token_expiry: 30m0s
+    providers:
+        - name: keycloak
+          type: oidc
+          enabled: true
+          config:
+            client_id: port-authorizing
+            client_secret: your-client-secret-change-in-production
+            issuer: http://localhost:8180/realms/portauth
+            redirect_url: http://localhost:8080/api/auth/oidc/callback
+            roles_claim: roles
+            username_claim: preferred_username
+    users:
+        - username: admin
+          password: admin123
+          roles:
+            - admin
+        - username: developer
+          password: dev123
+          roles:
+            - developer
+        - username: pepe
+          password: dasdasd
+          roles:
+            - admin
+connections:
+    - name: postgres-test
+      type: postgres
+      host: localhost
+      port: 5432
+      duration: 3m0s
+      tags:
+        - env:test
+        - type:database
+      metadata:
+        database: testdb
+        description: Test PostgreSQL database (Docker)
+      backend_username: testuser
+      backend_password: testpass
+      backend_database: testdb
+    - name: nginx-server
+      type: http
+      host: localhost
+      port: 8888
+      scheme: http
+      duration: 1h0m0s
+      tags:
+        - env:test
+        - type:web
+      metadata:
+        description: Test Nginx web server (Docker)
+    - name: postgres-prod
+      type: postgres
+      host: prod-db.example.com
+      port: 5432
+      duration: 15m0s
+      tags:
+        - env:production
+        - type:database
+      metadata:
+        description: Production PostgreSQL database
+    - name: internal-api
+      type: http
+      host: api.internal.example.com
+      port: 443
+      scheme: https
+      duration: 2h0m0s
+      tags:
+        - env:production
+        - type:api
+      metadata:
+        description: Internal REST API
+policies:
+    - name: admin-all
       roles:
         - admin
-    - username: developer
-      password: dev123
+      tags:
+        - env:test
+        - env:production
+      tag_match: any
+      whitelist:
+        - .*
+    - name: dev-test
       roles:
         - developer
-
-connections:
-  # PostgreSQL test database (Docker)
-  - name: postgres-test
-    type: postgres
-    host: localhost
-    port: 5432
-    duration: 3m
-    tags:
-      - env:test
-      - type:database
-    backend_username: "testuser"
-    backend_password: "testpass"
-    backend_database: "testdb"
-    metadata:
-      description: "Test PostgreSQL database (Docker)"
-      database: "testdb"
-
-  # Nginx web server (Docker)
-  - name: nginx-server
-    type: http
-    host: localhost
-    port: 8888
-    scheme: http
-    duration: 1h
-    tags:
-      - env:test
-      - type:web
-    metadata:
-      description: "Test Nginx web server (Docker)"
-
-  # Production examples
-  - name: postgres-prod
-    type: postgres
-    host: prod-db.example.com
-    port: 5432
-    duration: 15m
-    tags:
-      - env:production
-      - type:database
-    metadata:
-      description: "Production PostgreSQL database"
-
-  - name: internal-api
-    type: http
-    host: api.internal.example.com
-    port: 443
-    scheme: https
-    duration: 2h
-    tags:
-      - env:production
-      - type:api
-    metadata:
-      description: "Internal REST API"
-
-  - name: redis-cache
-    type: tcp
-    host: redis.example.com
-    port: 6379
-    duration: 5m
-    tags:
-      - env:production
-      - type:cache
-    metadata:
-      description: "Redis cache server"
-
-# Role-based access policies
-policies:
-  # Admin has full access to everything
-  - name: admin-all
-    roles:
-      - admin
-    tags:
-      - env:test
-      - env:production
-    tag_match: any
-    whitelist:
-      - ".*"
-
-  # Developer has full access to test
-  - name: dev-test
-    roles:
-      - developer
-    tags:
-      - env:test
-    tag_match: any
-    whitelist:
-      # PostgreSQL query patterns
-      - "^SELECT.*"        # Read data
-      - "^EXPLAIN.*"       # Query planning (read-only)
-      # PostgreSQL connection patterns (required by most clients)
-      - "^SET.*"           # Session configuration (e.g., SET extra_float_digits, SET DateStyle)
-      - "^SHOW.*"          # Show settings (read-only)
-      - "^BEGIN.*"         # Transaction control
-      - "^COMMIT.*"
-      - "^ROLLBACK.*"
-      # Note: Different PostgreSQL clients send different SET commands during connection.
-      # If connection fails with "Query blocked", check audit.log for the blocked command.
-
-      # HTTP patterns (for HTTP/HTTPS connections)
-      - "^GET /.*"
-      - "^POST /api/.*"
-      - "^PUT /api/.*"
-      - "^PATCH /api/.*"
-
-  # Developer has read-only access to production
-  - name: dev-prod-readonly
-    roles:
-      - developer
-    tags:
-      - env:production
-    tag_match: any
-    whitelist:
-      # PostgreSQL read-only queries
-      - "^SELECT.*"
-      - "^EXPLAIN.*"
-      # PostgreSQL connection patterns (required)
-      - "^SET.*"
-      - "^SHOW.*"
-      - "^BEGIN.*"
-      - "^COMMIT.*"
-      - "^ROLLBACK.*"
-      # HTTP read-only
-      - "^GET .*"
-
+      tags:
+        - env:test
+      tag_match: any
+      whitelist:
+        - ^SELECT.*
+        - ^EXPLAIN.*
+        - ^SET.*
+        - ^SHOW.*
+        - ^BEGIN.*
+        - ^COMMIT.*
+        - ^ROLLBACK.*
+        - ^GET /.*
+        - ^POST /api/.*
+        - ^PUT /api/.*
+        - ^PATCH /api2/.*
+    - name: dev-prod-readonly
+      roles:
+        - developer
+      tags:
+        - env:production
+      tag_match: any
+      whitelist:
+        - ^SELECT.*
+        - ^EXPLAIN.*
+        - ^SET.*
+        - ^SHOW.*
+        - ^BEGIN.*
+        - ^COMMIT.*
+        - ^ROLLBACK.*
+        - ^GET .*
 security:
-  enable_llm_analysis: false
-  llm_provider: "openai"
-  llm_api_key: ""
-
+    enable_llm_analysis: false
+    llm_provider: openai
 logging:
-  audit_log_path: "audit.log"
-  log_level: "info"
-
-# Approval workflow configuration (disabled by default)
+    audit_log_path: audit.log
+    log_level: info
 approval:
-  enabled: true
-  patterns:
-     # HTTP DELETE requests
-     - pattern: "^DELETE /.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-
-     # PostgreSQL dangerous queries
-     - pattern: "^DELETE FROM.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^DROP TABLE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^DROP DATABASE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^TRUNCATE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^UPDATE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-  webhook:
-    url: "http://localhost:9000/webhook"  # Mock approval server
-  slack:  # Not needed for mock server
-    webhook_url: "https://hooks.slack.com/services/"
+    enabled: true
+    patterns:
+        - pattern: ^DELETE /.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DELETE FROM.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DROP TABLE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DROP DATABASE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^TRUNCATE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^UPDATE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+    webhook:
+        url: http://localhost:9000/webhook
+    slack:
+        webhook_url: https://hooks.slack.com/services/

@@ -127,6 +127,7 @@
                             <select id="conn-type" required onchange="updateConnectionFields()">
                                 <option value="">Select Type...</option>
                                 <option value="postgres">PostgreSQL</option>
+                                <option value="redis">Redis</option>
                                 <option value="http">HTTP</option>
                                 <option value="https">HTTPS</option>
                                 <option value="tcp">TCP</option>
@@ -174,6 +175,22 @@
                             <div class="form-group">
                                 <label>Backend Database:</label>
                                 <input type="text" id="conn-backend-database">
+                            </div>
+                        </div>
+                        
+                        <!-- Redis specific fields -->
+                        <div id="redis-fields" style="display: none;">
+                            <div class="form-group">
+                                <label>Backend Password (optional):</label>
+                                <input type="password" id="conn-redis-password" placeholder="Leave empty if no AUTH required">
+                                <small style="color: #666; font-size: 0.85em;">Redis AUTH password. Leave empty when editing to keep existing password</small>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="conn-redis-cluster">
+                                    Redis Cluster Mode
+                                </label>
+                                <small style="color: #666; font-size: 0.85em; display: block; margin-left: 20px;">Enable if connecting to Redis Cluster (handles MOVED/ASK redirects)</small>
                             </div>
                         </div>
                         <div class="form-actions">

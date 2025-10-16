@@ -75,6 +75,17 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For Redis connections:
+	// - Use protocol-aware proxy for command interception and whitelisting
+	if conn.Config.Type == "redis" {
+		if isWebSocket {
+			s.handleRedisWebSocket(w, r)
+		} else {
+			s.handleRedisProxy(w, r)
+		}
+		return
+	}
+
 	// For WebSocket requests or TCP connections, use WebSocket-based reverse tunnel
 
 	// Log audit event

@@ -311,13 +311,17 @@ function hideConnectionForm() {
 function updateConnectionFields() {
     const type = document.getElementById('conn-type').value;
     const postgresFields = document.getElementById('postgres-fields');
+    const redisFields = document.getElementById('redis-fields');
     
     // Hide all type-specific fields first
     postgresFields.style.display = 'none';
+    redisFields.style.display = 'none';
     
     // Show relevant fields based on type
     if (type === 'postgres') {
         postgresFields.style.display = 'block';
+    } else if (type === 'redis') {
+        redisFields.style.display = 'block';
     }
     // For http/https, we infer the scheme from the type itself
 }
@@ -340,10 +344,16 @@ async function editConnection(name) {
         document.getElementById('conn-host').value = conn.host;
         document.getElementById('conn-port').value = conn.port;
         document.getElementById('conn-tags').value = conn.tags ? conn.tags.join(', ') : '';
+        
+        // PostgreSQL-specific fields
         document.getElementById('conn-backend-username').value = conn.backend_username || '';
         document.getElementById('conn-backend-database').value = conn.backend_database || '';
         // Don't populate password field - let user enter new password or leave empty to keep existing
         document.getElementById('conn-backend-password').value = '';
+        
+        // Redis-specific fields
+        document.getElementById('conn-redis-password').value = ''; // Don't populate, let user enter new or leave empty
+        document.getElementById('conn-redis-cluster').checked = conn.redis_cluster || false;
         
         // Populate duration (now comes as string from API)
         document.getElementById('conn-duration').value = conn.duration || '';
@@ -418,6 +428,15 @@ async function saveConnection(event) {
         const password = document.getElementById('conn-backend-password').value;
         if (password) {
             connection.backend_password = password;
+        }
+    } else if (connType === 'redis') {
+        // Redis cluster mode
+        connection.redis_cluster = document.getElementById('conn-redis-cluster').checked;
+        
+        // Only include password if it's provided (not empty)
+        const redisPassword = document.getElementById('conn-redis-password').value;
+        if (redisPassword) {
+            connection.backend_password = redisPassword;
         }
     }
 

@@ -58,17 +58,19 @@ type User struct {
 // ConnectionConfig defines an available connection endpoint
 type ConnectionConfig struct {
 	Name     string            `yaml:"name" json:"name"`
-	Type     string            `yaml:"type" json:"type"` // postgres, http, tcp
+	Type     string            `yaml:"type" json:"type"` // postgres, http, tcp, redis
 	Host     string            `yaml:"host" json:"host"`
 	Port     int               `yaml:"port" json:"port"`
 	Scheme   string            `yaml:"scheme,omitempty" json:"scheme,omitempty"`     // for HTTP: http/https
 	Duration time.Duration     `yaml:"duration,omitempty" json:"duration,omitempty"` // connection timeout duration
 	Tags     []string          `yaml:"tags,omitempty" json:"tags,omitempty"`         // Tags for policy matching (env:prod, team:backend, etc.)
 	Metadata map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`
-	// Backend credentials (for protocols like Postgres where proxy re-authenticates)
-	BackendUsername string `yaml:"backend_username,omitempty" json:"backend_username,omitempty"`
-	BackendPassword string `yaml:"backend_password,omitempty" json:"backend_password,omitempty"`
-	BackendDatabase string `yaml:"backend_database,omitempty" json:"backend_database,omitempty"`
+	// Backend credentials (for protocols like Postgres/Redis where proxy re-authenticates)
+	BackendUsername string `yaml:"backend_username,omitempty" json:"backend_username,omitempty"` // For Postgres
+	BackendPassword string `yaml:"backend_password,omitempty" json:"backend_password,omitempty"` // For Postgres and Redis AUTH
+	BackendDatabase string `yaml:"backend_database,omitempty" json:"backend_database,omitempty"` // For Postgres
+	// Redis-specific options
+	RedisCluster bool `yaml:"redis_cluster,omitempty" json:"redis_cluster,omitempty"` // Enable Redis Cluster mode
 	// Deprecated: use policies instead
 	Whitelist []string `yaml:"whitelist,omitempty" json:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
 }

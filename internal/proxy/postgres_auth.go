@@ -917,8 +917,12 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 					}
 					if nameEnd < i+1+length {
 						nameEnd++ // Skip null terminator
+						// the query is null-terminated; parameter type OIDs follow it
 						queryBytes := data[nameEnd : i+1+length]
-						query = string(bytes.TrimRight(queryBytes, "\x00"))
+						if end := bytes.IndexByte(queryBytes, 0); end >= 0 {
+							queryBytes = queryBytes[:end]
+						}
+						query = string(queryBytes)
 					}
 				}
 

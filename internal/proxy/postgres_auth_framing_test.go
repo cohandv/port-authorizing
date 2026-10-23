@@ -52,3 +52,13 @@ func TestForwardClientFraming(t *testing.T) {
 		}
 	}
 }
+
+// Parse carries parameter type OIDs after the query's terminator; they must not become a "second statement".
+func TestParseQueryExcludesParamTypes(t *testing.T) {
+	p := NewPostgresAuthProxy(&config.ConnectionConfig{Name: "c"}, "", "u", "id", nil, &config.Config{}, []string{"^SELECT"}, nil)
+	q := "SELECT oid FROM pg_type WHERE oid = ANY($1) ORDER BY oid;"
+	blocked, got := p.validateAndLogQuery(pgMsg('P', "\x00"+q+"\x00\x00\x01\x00\x00\x03\xf8"))
+	if blocked {
+		t.Fatalf("blocked %q", got)
+	}
+}

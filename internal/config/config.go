@@ -113,12 +113,12 @@ func (cs ConfigSource) MarshalJSON() ([]byte, error) {
 	// This is important for API communication
 	type rawConfigSource ConfigSource
 	raw := rawConfigSource(cs)
-	
+
 	// Set default type if empty
 	if raw.Type == "" {
 		raw.Type = ConfigSourceTypePlain
 	}
-	
+
 	return json.Marshal(raw)
 }
 
@@ -186,6 +186,8 @@ type ConnectionConfig struct {
 	BackendUsername ConfigSource `yaml:"backend_username,omitempty" json:"backend_username,omitempty"`
 	BackendPassword ConfigSource `yaml:"backend_password,omitempty" json:"backend_password,omitempty"`
 	BackendDatabase string       `yaml:"backend_database,omitempty" json:"backend_database,omitempty"`
+	// Extra startup parameters for the backend (run-time settings, e.g. statement_timeout); clients cannot override them at connect
+	BackendParams map[string]string `yaml:"backend_params,omitempty" json:"backend_params,omitempty"`
 	// Deprecated: use policies instead
 	Whitelist []string `yaml:"whitelist,omitempty" json:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
 }
@@ -202,9 +204,9 @@ type RolePolicy struct {
 
 // SecurityConfig contains security settings
 type SecurityConfig struct {
-	EnableLLMAnalysis   bool          `yaml:"enable_llm_analysis"`
-	LLMProvider         string        `yaml:"llm_provider,omitempty"`
-	LLMAPIKey           string        `yaml:"llm_api_key,omitempty"`
+	EnableLLMAnalysis    bool          `yaml:"enable_llm_analysis"`
+	LLMProvider          string        `yaml:"llm_provider,omitempty"`
+	LLMAPIKey            string        `yaml:"llm_api_key,omitempty"`
 	ConfigSourceCacheTTL time.Duration `yaml:"config_source_cache_ttl,omitempty"` // TTL for ConfigMap/Secret resolution cache (default: 1m)
 }
 

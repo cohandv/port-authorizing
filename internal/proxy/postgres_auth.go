@@ -11,9 +11,10 @@ import (
 	"io"
 	"log"
 	"net"
-	"regexp"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/davidcohan/port-authorizing/internal/approval"
@@ -33,6 +34,7 @@ type PostgresAuthProxy struct {
 	whitelist    []string
 	approvalMgr  *approval.Manager
 	resolver     *config.ConfigSourceResolver
+	txStatus     atomic.Uint32 // last ReadyForQuery status from backend ('I', 'T', 'E')
 }
 
 // NewPostgresAuthProxy creates a postgres proxy with auth handling
@@ -186,13 +188,13 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 	go func() {
 		defer wg.Done()
 		defer func() { _ = backendConn.Close() }()
-		p.forwardWithLogging(clientConn, backendConn, true)
+		p.forwardClient(clientConn, backendConn)
 	}()
 
 	go func() {
 		defer wg.Done()
 		defer func() { _ = clientConn.Close() }()
-		p.forwardWithLogging(backendConn, clientConn, false)
+		p.forwardBackend(backendConn, clientConn)
 	}()
 
 	wg.Wait()
@@ -320,6 +322,18 @@ func (p *PostgresAuthProxy) sendBackendStartup(conn net.Conn, username, database
 	buf.WriteByte(0)
 	buf.WriteString(database)
 	buf.WriteByte(0)
+
+	keys := make([]string, 0, len(p.config.BackendParams))
+	for k := range p.config.BackendParams {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		buf.WriteString(k)
+		buf.WriteByte(0)
+		buf.WriteString(p.config.BackendParams[k])
+		buf.WriteByte(0)
+	}
 
 	// End marker
 	buf.WriteByte(0)
@@ -641,30 +655,83 @@ func (p *PostgresAuthProxy) validateAPICredentials(username, password string) bo
 	return false
 }
 
-// forwardWithLogging forwards data and logs/validates queries
-func (p *PostgresAuthProxy) forwardWithLogging(src, dst net.Conn, logQueries bool) {
-	buf := make([]byte, 32*1024)
+// Message size caps: client queries are bounded tighter, backend rows can be large (bytea/text up to 1 GB)
+const (
+	maxClientMessage  = 64 << 20
+	maxBackendMessage = 1 << 30
+)
 
+// readMessage reads one typed protocol message (type, int32 length incl. itself, body) and returns it whole
+func readMessage(r *bufio.Reader, maxLen uint32) (byte, []byte, error) {
+	var hdr [5]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return 0, nil, err
+	}
+	n := binary.BigEndian.Uint32(hdr[1:])
+	if n < 4 || n > maxLen {
+		return 0, nil, fmt.Errorf("invalid message length %d", n)
+	}
+	msg := make([]byte, 1+n)
+	copy(msg, hdr[:])
+	_, err := io.ReadFull(r, msg[5:])
+	return hdr[0], msg, err
+}
+
+// forwardClient forwards client messages one by one, validating every Query/Parse. A blocked Query is answered
+// with ErrorResponse+ReadyForQuery; a blocked Parse drops the rest of the extended-protocol batch up to Sync.
+// ponytail: with pipelined batches the injected error can overtake backend results still in flight; fine for psql/IDEs
+func (p *PostgresAuthProxy) forwardClient(src, dst net.Conn) {
+	r := bufio.NewReaderSize(src, 32*1024)
+	w := bufio.NewWriterSize(dst, 32*1024)
+	var skipToSync bool
+	var blockedQuery string
 	for {
-		n, err := src.Read(buf)
-		if n > 0 {
-			data := buf[:n]
-
-			if logQueries {
-				// Validate queries against whitelist before forwarding
-				if blocked, query := p.validateAndLogQuery(data); blocked {
-					// Send error to client and don't forward to backend
-					p.sendQueryBlockedError(src, query)
+		t, msg, err := readMessage(r, maxClientMessage)
+		if err != nil {
+			return
+		}
+		if skipToSync {
+			if t == 'S' {
+				p.sendQueryBlockedError(src, blockedQuery)
+				skipToSync = false
+			}
+			continue
+		}
+		if t == 'Q' || t == 'P' {
+			if blocked, query := p.validateAndLogQuery(msg); blocked {
+				if t == 'P' {
+					skipToSync, blockedQuery = true, query
 					continue
 				}
-			}
-
-			if _, err := dst.Write(data); err != nil {
-				return
+				p.sendQueryBlockedError(src, query)
+				continue
 			}
 		}
+		if _, err := w.Write(msg); err != nil {
+			return
+		}
+		if r.Buffered() == 0 && w.Flush() != nil {
+			return
+		}
+	}
+}
 
+// forwardBackend forwards backend messages, remembering the transaction status of each ReadyForQuery
+func (p *PostgresAuthProxy) forwardBackend(src, dst net.Conn) {
+	r := bufio.NewReaderSize(src, 32*1024)
+	w := bufio.NewWriterSize(dst, 32*1024)
+	for {
+		t, msg, err := readMessage(r, maxBackendMessage)
 		if err != nil {
+			return
+		}
+		if t == 'Z' && len(msg) == 6 {
+			p.txStatus.Store(uint32(msg[5]))
+		}
+		if _, err := w.Write(msg); err != nil {
+			return
+		}
+		if r.Buffered() == 0 && w.Flush() != nil {
 			return
 		}
 	}
@@ -697,8 +764,12 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 					}
 					if nameEnd < i+1+length {
 						nameEnd++ // Skip null terminator
+						// the query is null-terminated; parameter type OIDs follow it
 						queryBytes := data[nameEnd : i+1+length]
-						query = string(bytes.TrimRight(queryBytes, "\x00"))
+						if end := bytes.IndexByte(queryBytes, 0); end >= 0 {
+							queryBytes = queryBytes[:end]
+						}
+						query = string(queryBytes)
 					}
 				}
 
@@ -806,84 +877,26 @@ func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 		return true
 	}
 
-	// Check if this looks like a PL/SQL script (contains multiple statements or blocks)
-	if p.isPLSQLScript(query) {
-		// Use subquery validation for PL/SQL scripts
-		validator := security.NewSubqueryValidator()
-		validationResult := validator.ValidateScript(query, p.whitelist)
-
-		// Log subquery validation results
+	// Validate each top-level statement: "SELECT 1; DROP ..." must not pass on the first one
+	result := security.NewSubqueryValidator().ValidateScript(query, p.whitelist)
+	if result.TotalQueries > 1 {
 		_ = audit.Log(p.auditLogPath, p.username, "plsql_subquery_validation", p.config.Name, map[string]interface{}{
 			"connection_id": p.connectionID,
-			"total_queries": validationResult.TotalQueries,
-			"allowed_count": validationResult.AllowedCount,
-			"blocked_count": validationResult.BlockedCount,
-			"is_allowed":    validationResult.IsAllowed,
+			"total_queries": result.TotalQueries,
+			"allowed_count": result.AllowedCount,
+			"blocked_count": result.BlockedCount,
+			"is_allowed":    result.IsAllowed,
 		})
-
-		return validationResult.IsAllowed
 	}
-
-	// For single queries, use the original logic
-	for _, pattern := range p.whitelist {
-		// Compile with case-insensitive flag
-		re, err := regexp.Compile("(?i)" + pattern)
-		if err != nil {
-			// Log bad pattern but don't block
-			_ = audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
-				"connection_id": p.connectionID,
-				"pattern":       pattern,
-				"error":         err.Error(),
-			})
-			continue
-		}
-		if re.MatchString(query) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isPLSQLScript checks if a query looks like a PL/SQL script with multiple statements
-func (p *PostgresAuthProxy) isPLSQLScript(query string) bool {
-	// Check for multiple semicolons (indicating multiple statements)
-	semicolonCount := strings.Count(query, ";")
-	if semicolonCount > 1 {
-		return true
-	}
-
-	// Check for PL/SQL block patterns
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	if strings.HasPrefix(upperQuery, "BEGIN") && strings.HasSuffix(upperQuery, "END") {
-		return true
-	}
-
-	// Check for procedure/function creation
-	if strings.Contains(upperQuery, "CREATE PROCEDURE") ||
-		strings.Contains(upperQuery, "CREATE FUNCTION") ||
-		strings.Contains(upperQuery, "CREATE OR REPLACE") {
-		return true
-	}
-
-	// Check for multiple SQL statements (basic heuristic)
-	statements := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "EXECUTE"}
-	statementCount := 0
-	for _, stmt := range statements {
-		if strings.Contains(upperQuery, stmt) {
-			statementCount++
-		}
-	}
-
-	return statementCount > 1
+	return result.IsAllowed
 }
 
 // sendQueryBlockedError sends a proper PostgreSQL error response to the client for blocked queries
 func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
 	// Truncate query if too long
 	displayQuery := query
-	if len(displayQuery) > 100 {
-		displayQuery = displayQuery[:100] + "..."
+	if r := []rune(displayQuery); len(r) > 100 {
+		displayQuery = string(r[:100]) + "..."
 	}
 
 	// Build PostgreSQL ErrorResponse message
@@ -909,14 +922,15 @@ func (p *PostgresAuthProxy) sendQueryBlockedError(conn net.Conn, query string) {
 	buf.Write(fields.Bytes())
 
 	// Send complete error message to client
+	// ReadyForQuery with the backend's real transaction status (the backend never saw the query);
+	// one Write so it can't interleave with backend output
+	status := byte(p.txStatus.Load())
+	if status == 0 {
+		status = 'I'
+	}
+	buf.WriteByte('Z')
+	_ = binary.Write(&buf, binary.BigEndian, int32(5))
+	buf.WriteByte(status)
+
 	_, _ = conn.Write(buf.Bytes())
-
-	// Now send ReadyForQuery to indicate we're ready for next command
-	// This prevents client from hanging
-	var readyBuf bytes.Buffer
-	readyBuf.WriteByte('Z')                                 // ReadyForQuery message type
-	_ = binary.Write(&readyBuf, binary.BigEndian, int32(5)) // Length
-	readyBuf.WriteByte('I')                                 // Transaction status: Idle
-
-	_, _ = conn.Write(readyBuf.Bytes())
 }

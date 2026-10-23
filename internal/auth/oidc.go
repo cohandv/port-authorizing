@@ -198,23 +198,6 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 		"roles": roles,
 	})
 
-	// SECURITY: OIDC users MUST have "admin" role
-	hasAdmin := false
-	for _, role := range roles {
-		if role == "admin" {
-			hasAdmin = true
-			break
-		}
-	}
-	if !hasAdmin {
-		_ = audit.Log("stdout", username, "oidc_auth_denied_no_admin", "oidc", map[string]interface{}{
-			"username": username,
-			"roles":    roles,
-			"reason":   "missing required 'admin' role",
-		})
-		return nil, fmt.Errorf("access denied: OIDC users must have 'admin' role")
-	}
-
 	return &UserInfo{
 		Username: username,
 		Email:    email,
@@ -388,23 +371,6 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]interface{}{
 		"roles": roles,
 	})
-
-	// SECURITY: OIDC users MUST have "admin" role
-	hasAdmin := false
-	for _, role := range roles {
-		if role == "admin" {
-			hasAdmin = true
-			break
-		}
-	}
-	if !hasAdmin {
-		_ = audit.Log("stdout", username, "oidc_auth_denied_no_admin", "oidc", map[string]interface{}{
-			"username": username,
-			"roles":    roles,
-			"reason":   "missing required 'admin' role",
-		})
-		return nil, fmt.Errorf("access denied: OIDC users must have 'admin' role")
-	}
 
 	sub, _ := claims["sub"].(string)
 

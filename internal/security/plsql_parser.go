@@ -25,11 +25,8 @@ func NewPLSQLParser() *PLSQLParser {
 func (p *PLSQLParser) ParseScript(script string) []PLSQLSubQuery {
 	var subqueries []PLSQLSubQuery
 
-	// Remove comments and normalize whitespace
-	normalizedScript := p.normalizeScript(script)
-
-	// Split by semicolons and process each part
-	parts := p.splitBySemicolons(normalizedScript)
+	// Split by top-level semicolons (comments dropped, literals kept intact)
+	parts := p.splitBySemicolons(script)
 
 	lineOffset := 0
 	for _, part := range parts {
@@ -58,96 +55,80 @@ func (p *PLSQLParser) ParseScript(script string) []PLSQLSubQuery {
 	return subqueries
 }
 
-// normalizeScript removes comments and normalizes whitespace
-func (p *PLSQLParser) normalizeScript(script string) string {
-	lines := strings.Split(script, "\n")
-	var normalizedLines []string
+var dollarTag = regexp.MustCompile(`^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$`)
 
-	for _, line := range lines {
-		// Remove single-line comments (-- comment)
-		if commentIdx := strings.Index(line, "--"); commentIdx != -1 {
-			line = line[:commentIdx]
-		}
-
-		// Remove multi-line comments (/* comment */)
-		line = p.removeMultiLineComments(line)
-
-		// Normalize whitespace
-		line = strings.TrimSpace(line)
-
-		if line != "" {
-			normalizedLines = append(normalizedLines, line)
-		}
-	}
-
-	return strings.Join(normalizedLines, "\n")
-}
-
-// removeMultiLineComments removes /* */ style comments
-func (p *PLSQLParser) removeMultiLineComments(line string) string {
-	// Simple regex to remove /* */ comments
-	re := regexp.MustCompile(`/\*.*?\*/`)
-	return re.ReplaceAllString(line, "")
-}
-
-// splitBySemicolons splits script by semicolons, respecting PL/SQL blocks
+// splitBySemicolons splits a PostgreSQL script on top-level semicolons. Semicolons inside '...', E'...', "...",
+// $tag$...$tag$ and comments do not split; comments are dropped. BEGIN/END are transaction statements in PostgreSQL,
+// procedural bodies (DO, CREATE FUNCTION) are dollar-quoted.
 func (p *PLSQLParser) splitBySemicolons(script string) []string {
 	var parts []string
-	var current strings.Builder
-	var inBlock bool
-	var blockDepth int
+	var cur strings.Builder
+	flush := func() {
+		if s := strings.TrimSpace(cur.String()); s != "" {
+			parts = append(parts, s)
+		}
+		cur.Reset()
+	}
+	// end returns the index just past a literal opened at i with closing quote q; unterminated runs to the end
+	end := func(i int, q byte, backslash bool) int {
+		for j := i + 1; j < len(script); j++ {
+			switch {
+			case backslash && script[j] == '\\':
+				j++
+			case script[j] == q && j+1 < len(script) && script[j+1] == q:
+				j++
+			case script[j] == q:
+				return j + 1
+			}
+		}
+		return len(script)
+	}
+	identBefore := func(i int) bool { return i > 0 && (isAlphaNumeric(rune(script[i-1])) || script[i-1] == '$') }
 
-	for i, char := range script {
-		switch char {
-		case ';':
-			if !inBlock {
-				// End of statement outside block
-				part := strings.TrimSpace(current.String())
-				if part != "" {
-					parts = append(parts, part)
-				}
-				current.Reset()
+	for i := 0; i < len(script); {
+		c := script[i]
+		switch {
+		case c == ';':
+			flush()
+			i++
+		case strings.HasPrefix(script[i:], "--"):
+			if j := strings.IndexByte(script[i:], '\n'); j >= 0 {
+				i += j
 			} else {
-				current.WriteRune(char)
+				i = len(script)
 			}
-		case 'B':
-			// Check for BEGIN keyword
-			if i+4 < len(script) && script[i:i+5] == "BEGIN" {
-				// Make sure it's a word boundary
-				if i == 0 || !isAlphaNumeric(rune(script[i-1])) {
-					if i+5 >= len(script) || !isAlphaNumeric(rune(script[i+5])) {
-						inBlock = true
-						blockDepth++
-					}
-				}
+		case strings.HasPrefix(script[i:], "/*"):
+			if j := strings.Index(script[i+2:], "*/"); j >= 0 {
+				i += j + 4
+			} else {
+				i = len(script)
 			}
-			current.WriteRune(char)
-		case 'E':
-			// Check for END keyword
-			if i+2 < len(script) && script[i:i+3] == "END" {
-				// Make sure it's a word boundary
-				if i == 0 || !isAlphaNumeric(rune(script[i-1])) {
-					if i+3 >= len(script) || !isAlphaNumeric(rune(script[i+3])) {
-						if inBlock && blockDepth > 0 {
-							blockDepth--
-							if blockDepth == 0 {
-								inBlock = false
-							}
-						}
-					}
-				}
+			cur.WriteByte(' ')
+		case c == '\'' || c == '"':
+			// E'...' (escape string): backslash escapes the quote
+			esc := c == '\'' && i > 0 && (script[i-1] == 'E' || script[i-1] == 'e') && !identBefore(i-1)
+			j := end(i, c, esc)
+			cur.WriteString(script[i:j])
+			i = j
+		case c == '$' && !identBefore(i):
+			tag := dollarTag.FindString(script[i:])
+			if tag == "" {
+				cur.WriteByte(c)
+				i++
+				break
 			}
-			current.WriteRune(char)
+			j := len(script)
+			if k := strings.Index(script[i+len(tag):], tag); k >= 0 {
+				j = i + len(tag) + k + len(tag)
+			}
+			cur.WriteString(script[i:j])
+			i = j
 		default:
-			current.WriteRune(char)
+			cur.WriteByte(c)
+			i++
 		}
 	}
-
-	// Add remaining content
-	part := strings.TrimSpace(current.String())
-	if part != "" {
-		parts = append(parts, part)
-	}
+	flush()
 
 	return parts
 }

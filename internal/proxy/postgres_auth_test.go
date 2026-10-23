@@ -130,6 +130,18 @@ func TestPostgresAuthProxy_IsQueryAllowed(t *testing.T) {
 			want:      true,
 		},
 		{
+			name:      "second statement checked too",
+			whitelist: []string{"^SELECT.*"},
+			query:     "SELECT 1; TRUNCATE users",
+			want:      false,
+		},
+		{
+			name:      "semicolons inside literals are not statements",
+			whitelist: []string{"^SELECT.*", "^WITH.*"},
+			query:     "with s as (select 1) select 'id=' || x || '; a=' || y || '; b=' from s;",
+			want:      true,
+		},
+		{
 			name:      "complex pattern",
 			whitelist: []string{"^SELECT.*FROM users WHERE id.*"},
 			query:     "SELECT * FROM users WHERE id=1",

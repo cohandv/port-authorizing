@@ -30,10 +30,28 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM alpine:3.21
 
 # Update all packages and install runtime dependencies with latest security patches
+# Including AWS CLI for EKS authentication, gcloud for GKE, and kubectl
 RUN apk update && \
     apk upgrade && \
-    apk add --no-cache ca-certificates tzdata curl && \
-    rm -rf /var/cache/apk/*
+    apk add --no-cache \
+        ca-certificates \
+        tzdata \
+        curl \
+        python3 \
+        py3-pip \
+        groff \
+        && \
+    pip3 install --no-cache-dir --break-system-packages awscli && \
+    rm -rf /var/cache/apk/* /root/.cache
+
+# Trust AWS RDS's CA bundle so TLS to RDS Postgres/Redis verifies out of the box.
+# Pinned to a known-good sha256 so a corrupted/tampered download fails the build
+# instead of silently landing in the trust store. AWS rotates this bundle rarely
+# (see README.md "Updating the pinned RDS CA bundle") - bump the hash by hand when it does.
+RUN curl -fsSL -o /usr/local/share/ca-certificates/rds-global-bundle.crt \
+        https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem && \
+    echo "90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b  /usr/local/share/ca-certificates/rds-global-bundle.crt" | sha256sum -c - && \
+    update-ca-certificates
 
 # Create non-root user
 RUN addgroup -S portauth && adduser -S portauth -G portauth
@@ -45,9 +63,9 @@ WORKDIR /app
 COPY --from=builder /app/port-authorizing /usr/local/bin/port-authorizing
 
 
-# Create directories for data
-RUN mkdir -p /app/data /app/logs && \
-    chown -R portauth:portauth /app
+# Create directories for data, kubeconfig, and AWS credentials
+RUN mkdir -p /app/data /app/logs /home/portauth/.kube /home/portauth/.aws && \
+    chown -R portauth:portauth /app /home/portauth
 
 # Switch to non-root user
 USER portauth

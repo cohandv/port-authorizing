@@ -110,6 +110,28 @@
                         <p id="total-events" class="stat-value">0</p>
                     </div>
                 </div>
+                
+                <!-- Active Connections List -->
+                <div class="section-header" style="margin-top: 2rem;">
+                    <h2>Active Connections</h2>
+                </div>
+                <div id="active-connections-list" class="data-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Connection</th>
+                                <th>Type</th>
+                                <th>Streams</th>
+                                <th>Created</th>
+                                <th>Expires</th>
+                            </tr>
+                        </thead>
+                        <tbody id="active-connections-tbody">
+                            <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active connections</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Connections Tab -->
@@ -293,50 +315,13 @@
                     </div>
                 </div>
 
-                <div id="approval-pattern-form" class="form-container" style="display: none;">
-                    <h3 id="approval-pattern-form-title">Add Approval Pattern</h3>
-                    <form id="approvalPatternForm" onsubmit="saveApprovalPattern(event)">
-                        <input type="hidden" id="approval-pattern-index">
-                        
-                        <div class="form-group">
-                            <label>Pattern (Regex):</label>
-                            <input type="text" id="approval-pattern" required placeholder="^DELETE /.*|^POST /admin/.*">
-                            <small>For HTTP: "^METHOD /path$". For SQL: "^DELETE FROM .*"</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Tags (optional, comma-separated):</label>
-                            <input type="text" id="approval-tags" placeholder="env:prod, team:backend">
-                            <small>Leave empty to apply to all connections, or specify tags to restrict</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Tag Match Mode:</label>
-                            <select id="approval-tag-match">
-                                <option value="all">All (default)</option>
-                                <option value="any">Any</option>
-                            </select>
-                            <small>"All" requires all tags to match, "Any" requires at least one</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Timeout (seconds):</label>
-                            <input type="number" id="approval-timeout" value="300" min="30" required>
-                            <small>How long to wait for approval before timing out</small>
-                        </div>
-
-                        <div class="form-actions">
-                            <button type="submit">Save</button>
-                            <button type="button" onclick="hideApprovalPatternForm()">Cancel</button>
-                        </div>
-                    </form>
-                </div>
-
                 <div class="table-container">
                     <table id="approval-patterns-table">
                         <thead>
                             <tr>
                                 <th>Pattern</th>
+                                <th>Roles</th>
+                                <th>Role Match</th>
                                 <th>Tags</th>
                                 <th>Tag Match</th>
                                 <th>Timeout</th>
@@ -353,76 +338,6 @@
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h4>Approval Providers Configuration</h4>
                         <button onclick="showProvidersForm()">Configure Providers</button>
-                    </div>
-                    
-                    <div id="providers-form" class="form-container" style="display: none; margin-top: 15px;">
-                        <h5>Edit Approval Providers</h5>
-                        <form id="providersForm" onsubmit="saveProviders(event)">
-                            <!-- Webhook URL -->
-                            <div class="form-group">
-                                <label>Webhook URL Source:</label>
-                                <select id="webhook-url-type" onchange="toggleProviderConfigSourceFields('webhook')">
-                                    <option value="plain">Plain Value</option>
-                                    <option value="configmap">ConfigMap</option>
-                                    <option value="secret">Secret</option>
-                                </select>
-                            </div>
-                            <div id="webhook-plain-fields">
-                                <div class="form-group">
-                                    <label>Webhook URL:</label>
-                                    <input type="url" id="provider-webhook-url" placeholder="https://your-webhook-endpoint.com/approve">
-                                    <small>HTTP endpoint to receive approval requests (leave empty to disable)</small>
-                                </div>
-                            </div>
-                            <div id="webhook-k8s-fields" style="display: none;">
-                                <div class="form-group">
-                                    <label>ConfigMap/Secret Name:</label>
-                                    <input type="text" id="webhook-url-ref" placeholder="e.g., webhook-config">
-                                    <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret</small>
-                                </div>
-                                <div class="form-group">
-                                    <label>Key Name:</label>
-                                    <input type="text" id="webhook-url-ref-name" placeholder="url" value="url">
-                                    <small style="color: #666; font-size: 0.85em;">Key name within the ConfigMap/Secret (default: url)</small>
-                                </div>
-                            </div>
-                            
-                            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
-                            
-                            <!-- Slack Webhook URL -->
-                            <div class="form-group">
-                                <label>Slack Webhook URL Source:</label>
-                                <select id="slack-url-type" onchange="toggleProviderConfigSourceFields('slack')">
-                                    <option value="plain">Plain Value</option>
-                                    <option value="configmap">ConfigMap</option>
-                                    <option value="secret">Secret</option>
-                                </select>
-                            </div>
-                            <div id="slack-plain-fields">
-                                <div class="form-group">
-                                    <label>Slack Webhook URL:</label>
-                                    <input type="url" id="provider-slack-url" placeholder="https://hooks.slack.com/services/...">
-                                    <small>Slack incoming webhook URL for approval notifications (leave empty to disable)</small>
-                                </div>
-                            </div>
-                            <div id="slack-k8s-fields" style="display: none;">
-                                <div class="form-group">
-                                    <label>ConfigMap/Secret Name:</label>
-                                    <input type="text" id="slack-url-ref" placeholder="e.g., slack-config">
-                                    <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret</small>
-                                </div>
-                                <div class="form-group">
-                                    <label>Key Name:</label>
-                                    <input type="text" id="slack-url-ref-name" placeholder="webhook_url" value="webhook_url">
-                                    <small style="color: #666; font-size: 0.85em;">Key name within the ConfigMap/Secret (default: webhook_url)</small>
-                                </div>
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="submit">Save Providers</button>
-                                <button type="button" onclick="hideProvidersForm()">Cancel</button>
-                            </div>
-                        </form>
                     </div>
                     
                     <div id="approval-providers-info" style="margin-top: 10px;">
@@ -518,18 +433,61 @@
                 <select id="conn-type" required onchange="updateConnectionFields()">
                     <option value="">Select Type...</option>
                     <option value="postgres">PostgreSQL</option>
+                    <option value="redis">Redis</option>
                     <option value="http">HTTP</option>
                     <option value="https">HTTPS</option>
                     <option value="tcp">TCP</option>
+                    <option value="k8s_services">K8s Services Discovery</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>Host:</label>
-                <input type="text" id="conn-host" required>
+            <div id="host-port-fields">
+                <div class="form-group">
+                    <label>Host:</label>
+                    <input type="text" id="conn-host">
+                </div>
+                <div class="form-group">
+                    <label>Port:</label>
+                    <input type="number" id="conn-port">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Port:</label>
-                <input type="number" id="conn-port" required>
+            
+            <!-- K8s Services specific fields -->
+            <div id="k8s-services-fields" style="display: none; border-top: 2px solid #58a6ff; padding-top: 15px; margin-top: 15px;">
+                <h4 style="margin-bottom: 15px; color: #58a6ff;">☸️ Kubernetes Service Discovery</h4>
+                <p style="color: #8b949e; font-size: 0.9em; margin-bottom: 15px;">
+                    Automatically discover and proxy to all services in your Kubernetes cluster.
+                    No host/port needed - services are discovered dynamically.
+                </p>
+                
+                <div class="form-group">
+                    <label>Include Namespaces (comma-separated, optional):</label>
+                    <input type="text" id="conn-k8s-include-namespaces" placeholder="default, app, staging">
+                    <small style="color: #666; font-size: 0.85em;">If set, only discover services in these namespaces. Leave empty to discover all (except excluded).</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Exclude Namespaces (comma-separated, optional):</label>
+                    <input type="text" id="conn-k8s-exclude-namespaces" placeholder="kube-system, monitoring">
+                    <small style="color: #666; font-size: 0.85em;">Namespaces to exclude. Defaults: kube-system, kube-public, cert-manager, etc.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Ignore Services (regex patterns, comma-separated):</label>
+                    <input type="text" id="conn-k8s-ignore-services" placeholder=".*-internal, test-.*, .*-canary">
+                    <small style="color: #666; font-size: 0.85em;">Regex patterns to ignore service names. Services matching any pattern will be hidden.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>Port Mappings (protocol per port):</label>
+                    <div id="k8s-port-mappings-container">
+                        <!-- Port mappings will be added here dynamically -->
+                    </div>
+                    <button type="button" onclick="addK8sPortMapping()" class="small-btn" style="margin-top: 8px;">+ Add Port Mapping</button>
+                    <small style="color: #666; font-size: 0.85em; display: block; margin-top: 8px;">
+                        <strong>Required for whitelist/approvals.</strong> Map K8s service ports to protocols (http, https, postgres, redis, tcp). 
+                        Unmapped ports default to TCP (raw bytes, no filtering).
+                    </small>
+                </div>
             </div>
             
             <div class="form-group">
@@ -549,6 +507,137 @@
                 <label>Metadata (JSON, optional):</label>
                 <textarea id="conn-metadata" rows="3" placeholder='{"description": "My connection", "team": "platform"}' style="font-family: monospace; font-size: 0.9em;"></textarea>
                 <small style="color: #666; font-size: 0.85em;">Valid JSON object. Must include "description" field if provided.</small>
+            </div>
+            
+            <!-- TLS/SSL Configuration -->
+            <div id="tls-fields" style="display: none; border-top: 2px solid #e0e0e0; padding-top: 15px; margin-top: 15px;">
+                <h4 style="margin-bottom: 15px;">🔒 TLS/SSL Configuration</h4>
+                
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                        <input type="checkbox" id="conn-tls-enabled" onchange="toggleTLSOptions()" style="flex-shrink: 0; margin: 0;">
+                        <label for="conn-tls-enabled" style="margin: 0 0 0 8px; cursor: pointer; font-weight: normal;">Enable TLS/SSL Encryption</label>
+                    </div>
+                    <small style="color: #666; font-size: 0.85em;">Enable encrypted connection to backend (recommended for production)</small>
+                </div>
+                
+                <div id="tls-options" style="display: none; margin-left: 25px; padding-left: 15px; border-left: 3px solid #4CAF50;">
+                    <div class="form-group">
+                        <label>Server Name (SNI):</label>
+                        <input type="text" id="conn-tls-server-name" placeholder="e.g., redis.example.com">
+                        <small style="color: #666; font-size: 0.85em;">Server name for certificate verification (leave empty to use host)</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                            <input type="checkbox" id="conn-tls-skip-verify" style="flex-shrink: 0; margin: 0;">
+                            <label for="conn-tls-skip-verify" style="margin: 0 0 0 8px; cursor: pointer; font-weight: normal;">Skip Certificate Verification</label>
+                        </div>
+                        <small style="color: #ff9800; font-size: 0.85em;">⚠️ Insecure! Only use for development/testing</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>CA Certificate Path (optional):</label>
+                        <input type="text" id="conn-tls-ca-cert" placeholder="/path/to/ca.crt">
+                        <small style="color: #666; font-size: 0.85em;">Path to custom CA certificate file for verification</small>
+                    </div>
+                    
+                    <h5 style="margin-top: 20px; margin-bottom: 10px; color: #666;">Mutual TLS (mTLS) - Optional</h5>
+                    
+                    <div class="form-group">
+                        <label>Client Certificate Path:</label>
+                        <input type="text" id="conn-tls-client-cert" placeholder="/path/to/client.crt">
+                        <small style="color: #666; font-size: 0.85em;">Path to client certificate for mutual TLS authentication</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Client Key Path:</label>
+                        <input type="text" id="conn-tls-client-key" placeholder="/path/to/client.key">
+                        <small style="color: #666; font-size: 0.85em;">Path to client private key for mutual TLS authentication</small>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Redis specific fields -->
+            <div id="redis-fields" style="display: none;">
+                <!-- Backend Username (Redis 6.0+ ACL) -->
+                <div class="form-group">
+                    <label>Redis Username Source:</label>
+                    <select id="conn-redis-username-type" onchange="toggleConfigSourceFields('redis-username')">
+                        <option value="">None (Legacy Auth)</option>
+                        <option value="plain">Plain Value</option>
+                        <option value="configmap">ConfigMap</option>
+                        <option value="secret">Secret</option>
+                    </select>
+                    <small style="color: #666; font-size: 0.85em;">For Redis 6.0+ ACL authentication. Leave as "None" for legacy password-only auth</small>
+                </div>
+                
+                <div id="redis-username-plain-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>Redis Username:</label>
+                        <input type="text" id="conn-redis-username" placeholder="e.g., myuser">
+                        <small style="color: #666; font-size: 0.85em;">ACL username for Redis 6.0+</small>
+                    </div>
+                </div>
+                
+                <div id="redis-username-k8s-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>ConfigMap/Secret Name:</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="conn-redis-username-ref" placeholder="e.g., redis-credentials" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="conn-redis-username-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Key Name:</label>
+                        <input type="text" id="conn-redis-username-refname" placeholder="e.g., username">
+                        <small style="color: #666; font-size: 0.85em;">Key within the ConfigMap/Secret</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Fallback Value (optional):</label>
+                        <input type="text" id="conn-redis-username-fallback" placeholder="Used if ConfigMap/Secret not found">
+                    </div>
+                </div>
+                
+                <!-- Backend Password (Redis Auth) -->
+                <div class="form-group">
+                    <label>Redis Password Source:</label>
+                    <select id="conn-redis-password-type" onchange="toggleConfigSourceFields('redis-password')">
+                        <option value="plain">Plain Value</option>
+                        <option value="configmap">ConfigMap</option>
+                        <option value="secret">Secret</option>
+                    </select>
+                    <small style="color: #666; font-size: 0.85em;">Leave empty if Redis has no authentication</small>
+                </div>
+                
+                <div id="redis-password-plain-fields">
+                    <div class="form-group">
+                        <label>Redis Password:</label>
+                        <input type="password" id="conn-redis-password" placeholder="Leave empty for no auth">
+                        <small style="color: #666; font-size: 0.85em;">Leave empty when editing to keep existing password or for no auth</small>
+                    </div>
+                </div>
+                
+                <div id="redis-password-k8s-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>ConfigMap/Secret Name:</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="conn-redis-password-ref" placeholder="e.g., redis-credentials" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="conn-redis-password-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Key Name:</label>
+                        <input type="text" id="conn-redis-password-refname" placeholder="e.g., password">
+                        <small style="color: #666; font-size: 0.85em;">Key within the ConfigMap/Secret</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Fallback Value (optional):</label>
+                        <input type="password" id="conn-redis-password-fallback" placeholder="Used if ConfigMap/Secret not found">
+                    </div>
+                </div>
             </div>
             
             <!-- PostgreSQL specific fields -->
@@ -571,8 +660,11 @@
                 <div id="username-k8s-fields" style="display: none;">
                     <div class="form-group">
                         <label>ConfigMap/Secret Name:</label>
-                        <input type="text" id="conn-backend-username-ref" placeholder="e.g., postgres-credentials">
-                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret</small>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="conn-backend-username-ref" placeholder="e.g., postgres-credentials" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="conn-backend-username-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
                     </div>
                     <div class="form-group">
                         <label>Key Name:</label>
@@ -604,8 +696,11 @@
                 <div id="password-k8s-fields" style="display: none;">
                     <div class="form-group">
                         <label>ConfigMap/Secret Name:</label>
-                        <input type="text" id="conn-backend-password-ref" placeholder="e.g., postgres-credentials">
-                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret</small>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="conn-backend-password-ref" placeholder="e.g., postgres-credentials" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="conn-backend-password-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
                     </div>
                     <div class="form-group">
                         <label>Key Name:</label>
@@ -629,6 +724,142 @@
             </div>
         </form>
     
+        </div>
+    </div>
+
+    <!-- Modal overlay for approval providers form -->
+    <div id="providers-form-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3>Configure Approval Providers</h3>
+            <form id="providersForm" onsubmit="saveProviders(event)">
+                <!-- Webhook URL -->
+                <div class="form-group">
+                    <label>Webhook URL Source:</label>
+                    <select id="webhook-url-type" onchange="toggleProviderConfigSourceFields('webhook')">
+                        <option value="plain">Plain Value</option>
+                        <option value="configmap">ConfigMap</option>
+                        <option value="secret">Secret</option>
+                    </select>
+                </div>
+                <div id="webhook-plain-fields">
+                    <div class="form-group">
+                        <label>Webhook URL:</label>
+                        <input type="url" id="provider-webhook-url" placeholder="https://your-webhook-endpoint.com/approve">
+                        <small>HTTP endpoint to receive approval requests (leave empty to disable)</small>
+                    </div>
+                </div>
+                <div id="webhook-k8s-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>ConfigMap/Secret Name:</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="webhook-url-ref" placeholder="e.g., webhook-config" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="webhook-url-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Key Name:</label>
+                        <input type="text" id="webhook-url-ref-name" placeholder="url" value="url">
+                        <small style="color: #666; font-size: 0.85em;">Key name within the ConfigMap/Secret (default: url)</small>
+                    </div>
+                </div>
+                
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+                
+                <!-- Slack Webhook URL -->
+                <div class="form-group">
+                    <label>Slack Webhook URL Source:</label>
+                    <select id="slack-url-type" onchange="toggleProviderConfigSourceFields('slack')">
+                        <option value="plain">Plain Value</option>
+                        <option value="configmap">ConfigMap</option>
+                        <option value="secret">Secret</option>
+                    </select>
+                </div>
+                <div id="slack-plain-fields">
+                    <div class="form-group">
+                        <label>Slack Webhook URL:</label>
+                        <input type="url" id="provider-slack-url" placeholder="https://hooks.slack.com/services/...">
+                        <small>Slack incoming webhook URL for approval notifications (leave empty to disable)</small>
+                    </div>
+                </div>
+                <div id="slack-k8s-fields" style="display: none;">
+                    <div class="form-group">
+                        <label>ConfigMap/Secret Name:</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="slack-url-ref" placeholder="e.g., slack-config" autocomplete="off">
+                            <div class="autocomplete-dropdown" id="slack-url-ref-dropdown"></div>
+                        </div>
+                        <small style="color: #666; font-size: 0.85em;">Name of the ConfigMap or Secret (type or select from list)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Key Name:</label>
+                        <input type="text" id="slack-url-ref-name" placeholder="webhook_url" value="webhook_url">
+                        <small style="color: #666; font-size: 0.85em;">Key name within the ConfigMap/Secret (default: webhook_url)</small>
+                    </div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit">Save Providers</button>
+                    <button type="button" onclick="hideProvidersForm()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal overlay for approval pattern form -->
+    <div id="approval-pattern-form-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3 id="approval-pattern-form-title">Add Approval Pattern</h3>
+            <form id="approvalPatternForm" onsubmit="saveApprovalPattern(event)">
+                <input type="hidden" id="approval-pattern-index">
+                
+                <div class="form-group">
+                    <label>Pattern (Regex):</label>
+                    <input type="text" id="approval-pattern" required placeholder="^DELETE /.*|^POST /admin/.*">
+                    <small>For HTTP: "^METHOD /path$". For SQL: "^DELETE FROM .*"</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Tags (optional, comma-separated):</label>
+                    <input type="text" id="approval-tags" placeholder="env:prod, team:backend">
+                    <small>Leave empty to apply to all connections, or specify tags to restrict</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Tag Match Mode:</label>
+                    <select id="approval-tag-match">
+                        <option value="all">All (default)</option>
+                        <option value="any">Any</option>
+                    </select>
+                    <small>"All" requires all tags to match, "Any" requires at least one</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Roles (optional, comma-separated):</label>
+                    <input type="text" id="approval-roles" placeholder="admin, developer">
+                    <small>Leave empty to apply to all users, or specify roles to restrict which users require approval</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Role Match Mode:</label>
+                    <select id="approval-role-match">
+                        <option value="any">Any (default)</option>
+                        <option value="all">All</option>
+                    </select>
+                    <small>"Any" requires user to have at least one role, "All" requires all specified roles</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Timeout (seconds):</label>
+                    <input type="number" id="approval-timeout" value="300" min="30" required>
+                    <small>How long to wait for approval before timing out</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit">Save</button>
+                    <button type="button" onclick="hideApprovalPatternForm()">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 

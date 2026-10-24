@@ -10,8 +10,12 @@ var (
 	rootCmd    *cobra.Command
 )
 
-func init() {
-	// Initialize root command
+// Execute builds and runs the root command for the standalone CLI binary.
+// Built lazily here (rather than in an init()) so that the combined
+// port-authorizing binary - which builds its own separate root command in
+// cmd/port-authorizing/main.go and never calls this - doesn't pay for a
+// redundant LoadConfig()+binary-resolution pass on every invocation.
+func Execute() error {
 	rootCmd = &cobra.Command{
 		Use:   "port-authorizing",
 		Short: "Port Authorizing - Secure proxy for any service",
@@ -29,10 +33,9 @@ approval workflows, and comprehensive audit logging.`,
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(contextCmd)
-}
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(NewClientBindingCommands()...)
 
-// Execute runs the root command
-func Execute() error {
 	return rootCmd.Execute()
 }
 
@@ -49,4 +52,9 @@ func NewListCmd() *cobra.Command {
 // NewConnectCmd returns the connect command
 func NewConnectCmd() *cobra.Command {
 	return connectCmd
+}
+
+// NewVersionCmd returns the version command
+func NewVersionCmd() *cobra.Command {
+	return versionCmd
 }

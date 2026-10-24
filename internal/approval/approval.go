@@ -21,15 +21,19 @@ const (
 
 // Request represents a request pending approval
 type Request struct {
-	ID           string
-	Username     string
-	ConnectionID string
-	Method       string
-	Path         string
-	Body         string
-	RequestedAt  time.Time
-	Metadata     map[string]string
-	Environment  string
+	ID             string
+	Username       string
+	ConnectionID   string
+	ConnectionType string // "postgres", "redis", "http", "https", "tcp"
+	ConnectionName string // Name of the connection
+	Method         string // HTTP method (for HTTP/HTTPS)
+	Path           string // HTTP path (for HTTP/HTTPS)
+	Query          string // SQL query (for Postgres)
+	Command        string // Redis command (for Redis)
+	Body           string
+	RequestedAt    time.Time
+	Metadata       map[string]string
+	Environment    string
 }
 
 // Response represents an approval response
@@ -67,10 +71,12 @@ type pendingRequest struct {
 }
 
 type approvalPattern struct {
-	Pattern  *regexp.Regexp
-	Tags     []string
-	TagMatch string // "all" or "any"
-	Timeout  time.Duration
+	Pattern   *regexp.Regexp
+	Tags      []string
+	TagMatch  string // "all" or "any"
+	Roles     []string
+	RoleMatch string // "all" or "any"
+	Timeout   time.Duration
 }
 
 // NewManager creates a new approval manager
@@ -96,7 +102,9 @@ func (m *Manager) RegisterProvider(provider Provider) {
 // AddApprovalPattern adds a pattern that requires approval
 // Pattern format: "^METHOD /path/pattern$"
 // Patterns are case-insensitive by default
-func (m *Manager) AddApprovalPattern(pattern string, tags []string, tagMatch string, timeout time.Duration) error {
+// Roles: if empty, the pattern applies to all users (permissive)
+// If roles are specified, only users with matching roles will require approval
+func (m *Manager) AddApprovalPattern(pattern string, tags []string, tagMatch string, roles []string, roleMatch string, timeout time.Duration) error {
 	// Make pattern case-insensitive (like whitelist patterns)
 	re, err := regexp.Compile("(?i)" + pattern)
 	if err != nil {
@@ -111,11 +119,17 @@ func (m *Manager) AddApprovalPattern(pattern string, tags []string, tagMatch str
 		tagMatch = "all"
 	}
 
+	if roleMatch == "" {
+		roleMatch = "any" // Default: user needs at least one of the specified roles
+	}
+
 	m.patterns = append(m.patterns, &approvalPattern{
-		Pattern:  re,
-		Tags:     tags,
-		TagMatch: tagMatch,
-		Timeout:  timeout,
+		Pattern:   re,
+		Tags:      tags,
+		TagMatch:  tagMatch,
+		Roles:     roles,
+		RoleMatch: roleMatch,
+		Timeout:   timeout,
 	})
 
 	return nil
@@ -123,7 +137,9 @@ func (m *Manager) AddApprovalPattern(pattern string, tags []string, tagMatch str
 
 // RequiresApproval checks if a request requires approval
 // If connectionTags is nil or empty, only patterns without tags are considered
-func (m *Manager) RequiresApproval(method, path string, connectionTags []string) (bool, time.Duration) {
+// If pattern has no roles, it applies to all users (permissive)
+// If pattern has roles, only users with matching roles require approval
+func (m *Manager) RequiresApproval(method, path string, connectionTags []string, userRoles []string) (bool, time.Duration) {
 	if len(m.patterns) == 0 {
 		return false, 0
 	}
@@ -135,6 +151,17 @@ func (m *Manager) RequiresApproval(method, path string, connectionTags []string)
 		if !pattern.Pattern.MatchString(requestStr) {
 			continue
 		}
+
+		// Check role matching
+		// If pattern has no roles, it applies to all users (permissive)
+		// If pattern has roles, user must match
+		if len(pattern.Roles) > 0 {
+			// Roles specified - check if user matches
+			if !m.matchesRoles(userRoles, pattern.Roles, pattern.RoleMatch) {
+				continue
+			}
+		}
+		// If no roles specified, pattern applies to everyone
 
 		// If pattern has no tags, it applies to all connections
 		if len(pattern.Tags) == 0 {
@@ -185,6 +212,45 @@ func (m *Manager) matchesTags(connectionTags, requiredTags []string, matchMode s
 	return true
 }
 
+// matchesRoles checks if user roles match the required roles
+// Note: This function is only called when requiredRoles is NOT empty.
+// Empty roles (meaning "apply to all users") is handled in RequiresApproval before this is called.
+func (m *Manager) matchesRoles(userRoles, requiredRoles []string, matchMode string) bool {
+	// Defensive check - this shouldn't happen since caller checks len(pattern.Roles) > 0
+	// But if it does, return true (no requirements = matches everyone)
+	if len(requiredRoles) == 0 {
+		return true
+	}
+
+	if len(userRoles) == 0 {
+		return false // User has no roles but pattern requires some
+	}
+
+	// Create a set of user roles for faster lookup
+	roleSet := make(map[string]bool)
+	for _, role := range userRoles {
+		roleSet[role] = true
+	}
+
+	if matchMode == "all" {
+		// Match if ALL required roles are present
+		for _, reqRole := range requiredRoles {
+			if !roleSet[reqRole] {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Default: "any" - Match if ANY required role is present
+	for _, reqRole := range requiredRoles {
+		if roleSet[reqRole] {
+			return true
+		}
+	}
+	return false
+}
+
 // RequestApproval sends an approval request to all providers and waits for a response
 func (m *Manager) RequestApproval(ctx context.Context, req *Request, timeout time.Duration) (*Response, error) {
 	if len(m.providers) == 0 {
@@ -222,7 +288,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req *Request, timeout tim
 	// Send approval request to all providers
 	successfulProviders := 0
 	var providerErrors []string
-	
+
 	for _, provider := range m.providers {
 		if err := provider.SendApprovalRequest(ctx, req); err != nil {
 			// Log error and track it
@@ -234,7 +300,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req *Request, timeout tim
 			fmt.Printf("✓ Successfully sent approval request to %s\n", provider.GetProviderName())
 		}
 	}
-	
+
 	// SECURITY: If NO providers successfully sent the request, deny immediately
 	// This ensures that if approval is enabled but webhooks are down/misconfigured,
 	// access is denied rather than bypassed
@@ -246,7 +312,7 @@ func (m *Manager) RequestApproval(ctx context.Context, req *Request, timeout tim
 			RespondedAt: time.Now(),
 		}, nil
 	}
-	
+
 	fmt.Printf("Approval request sent to %d/%d providers, waiting for response...\n", successfulProviders, len(m.providers))
 
 	// Wait for response or timeout
@@ -311,4 +377,3 @@ func (m *Manager) GetPendingRequestsCount() int {
 	defer m.mu.RUnlock()
 	return len(m.pendingRequests)
 }
-

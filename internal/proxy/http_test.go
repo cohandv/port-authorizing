@@ -21,10 +21,11 @@ func TestNewHTTPProxyWithWhitelist(t *testing.T) {
 	}
 
 	whitelist := []string{"^GET /api/.*", "^POST /api/users"}
+	roles := []string{"admin", "developer"}
 	tmpFile, _ := os.CreateTemp("", "audit-*.log")
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
-	proxy := NewHTTPProxyWithWhitelist(cfg, whitelist, tmpFile.Name(), "testuser", "conn-123")
+	proxy := NewHTTPProxyWithWhitelist(cfg, whitelist, tmpFile.Name(), "testuser", "conn-123", roles, nil)
 
 	if proxy == nil {
 		t.Fatal("NewHTTPProxyWithWhitelist() returned nil")
@@ -40,6 +41,10 @@ func TestNewHTTPProxyWithWhitelist(t *testing.T) {
 
 	if proxy.connectionID != "conn-123" {
 		t.Errorf("connectionID = %s, want 'conn-123'", proxy.connectionID)
+	}
+
+	if len(proxy.roles) != 2 {
+		t.Errorf("roles length = %d, want 2", len(proxy.roles))
 	}
 }
 
@@ -279,7 +284,7 @@ func TestHTTPProxy_HandleRequest_WithWhitelist(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			proxy := NewHTTPProxyWithWhitelist(cfg, tt.whitelist, tmpFile.Name(), "testuser", "conn-123")
+			proxy := NewHTTPProxyWithWhitelist(cfg, tt.whitelist, tmpFile.Name(), "testuser", "conn-123", nil, nil)
 
 			// Create a request body in HTTP format
 			requestBody := bytes.NewBuffer([]byte(tt.requestMethod + " " + tt.requestPath + " HTTP/1.1\r\n\r\n"))

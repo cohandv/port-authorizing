@@ -32,16 +32,20 @@ func NewWebhookProvider(urlSource config.ConfigSource, resolver *config.ConfigSo
 
 // webhookPayload is the payload sent to the webhook
 type webhookPayload struct {
-	RequestID    string            `json:"request_id"`
-	Environment  string            `json:"environment"`
-	Username     string            `json:"username"`
-	ConnectionID string            `json:"connection_id"`
-	Method       string            `json:"method"`
-	Path         string            `json:"path"`
-	Body         string            `json:"body,omitempty"`
-	RequestedAt  string            `json:"requested_at"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-	ApprovalURL  string            `json:"approval_url"` // URL to approve/reject
+	RequestID      string            `json:"request_id"`
+	Environment    string            `json:"environment"`
+	Username       string            `json:"username"`
+	ConnectionID   string            `json:"connection_id"`
+	ConnectionType string            `json:"connection_type"` // "postgres", "redis", "http", "https", "tcp"
+	ConnectionName string            `json:"connection_name"` // Name of the connection
+	Method         string            `json:"method,omitempty"`          // HTTP method (for HTTP/HTTPS)
+	Path           string            `json:"path,omitempty"`            // HTTP path (for HTTP/HTTPS)
+	Query          string            `json:"query,omitempty"`           // SQL query (for Postgres)
+	Command        string            `json:"command,omitempty"`         // Redis command (for Redis)
+	Body           string            `json:"body,omitempty"`
+	RequestedAt    string            `json:"requested_at"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	ApprovalURL    string            `json:"approval_url"` // URL to approve/reject
 }
 
 // SendApprovalRequest sends an approval request to the webhook
@@ -66,14 +70,18 @@ func (w *WebhookProvider) SendApprovalRequest(ctx context.Context, req *Request)
 	}
 	
 	payload := webhookPayload{
-		RequestID:    req.ID,
-		Username:     req.Username,
-		ConnectionID: req.ConnectionID,
-		Method:       req.Method,
-		Path:         req.Path,
-		Body:         req.Body,
-		RequestedAt:  req.RequestedAt.Format(time.RFC3339),
-		Metadata:     req.Metadata,
+		RequestID:      req.ID,
+		Username:       req.Username,
+		ConnectionID:   req.ConnectionID,
+		ConnectionType: req.ConnectionType,
+		ConnectionName: req.ConnectionName,
+		Method:         req.Method,
+		Path:           req.Path,
+		Query:          req.Query,
+		Command:        req.Command,
+		Body:           req.Body,
+		RequestedAt:    req.RequestedAt.Format(time.RFC3339),
+		Metadata:       req.Metadata,
 		// The approval URL should be constructed from the API base URL
 		// For now, we'll include the request ID and expect the webhook to call back
 		ApprovalURL: fmt.Sprintf("/api/approvals/%s", req.ID),

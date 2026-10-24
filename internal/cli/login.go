@@ -28,7 +28,6 @@ func init() {
 	loginCmd.Flags().StringVarP(&username, "username", "u", "", "Username (for local auth)")
 	loginCmd.Flags().StringVarP(&password, "password", "p", "", "Password (for local auth)")
 	loginCmd.Flags().StringVar(&loginProvider, "provider", "", "Authentication provider: local, oidc (auto-detects if not specified)")
-	loginCmd.Flags().StringVarP(&contextName, "context", "c", "", "Context name (default: use current or create 'default')")
 }
 
 type loginRequest struct {
@@ -48,25 +47,22 @@ type loginResponse struct {
 
 func runLogin(cmd *cobra.Command, args []string) error {
 	// Determine context name
+	contextName, _ = cmd.Root().PersistentFlags().GetString("context")
 	if contextName == "" {
 		cfg, _ := LoadConfig()
 		if cfg != nil && cfg.CurrentContext != "" {
 			contextName = cfg.CurrentContext
 		} else {
-			contextName = "default"
+			return fmt.Errorf("--context is required (e.g. --context dev): no current context is set yet")
 		}
 	}
 
-	// Get API URL from parent command flags
-	apiURL, _ := cmd.Root().PersistentFlags().GetString("api-url")
-	if apiURL == "" {
-		// Try to get from existing context
-		if ctx, err := GetContext(contextName); err == nil && ctx.APIURL != "" {
-			apiURL = ctx.APIURL
-		} else {
-			apiURL = "http://localhost:8080"
-		}
+	// Resolve API URL: explicit flag > saved context URL > https://fwd.{context}.cohandv.io
+	savedAPIURL := ""
+	if ctx, err := GetContext(contextName); err == nil {
+		savedAPIURL = ctx.APIURL
 	}
+	apiURL := resolveAPIURL(cmd, contextName, savedAPIURL)
 
 	// Determine authentication method
 	if loginProvider == "oidc" {

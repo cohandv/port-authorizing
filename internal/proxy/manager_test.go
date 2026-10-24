@@ -112,11 +112,13 @@ func TestConnectionManager_CreateConnection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			connectionID, expiresAt, err := cm.CreateConnection(
 				tt.username,
+				nil, // roles
 				tt.config,
 				tt.duration,
 				tt.whitelist,
 				tt.auditPath,
-				nil, // no approval manager for tests
+				nil, // approval manager
+				nil, // api config
 			)
 
 			if (err != nil) != tt.wantErr {
@@ -173,11 +175,13 @@ func TestConnectionManager_GetConnection(t *testing.T) {
 	// Create a connection
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		10*time.Minute,
 		[]string{},
 		tmpFile.Name(),
-		nil, // no approval manager for tests
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -240,11 +244,13 @@ func TestConnectionManager_CloseConnection(t *testing.T) {
 	// Create a connection
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		10*time.Minute,
 		[]string{},
 		tmpFile.Name(),
-		nil, // no approval manager for tests
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -299,11 +305,13 @@ func TestConnectionManager_GetActiveConnections(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		_, _, err := cm.CreateConnection(
 			"testuser",
+			nil, // roles
 			connConfig,
 			10*time.Minute,
 			[]string{},
 			tmpFile.Name(),
-			nil, // no approval manager for tests
+			nil, // approval manager
+			nil, // api config
 		)
 		if err != nil {
 			t.Fatalf("Failed to create connection: %v", err)
@@ -343,11 +351,13 @@ func TestConnectionManager_CloseAll(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		id, _, err := cm.CreateConnection(
 			"testuser",
+			nil, // roles
 			connConfig,
 			10*time.Minute,
 			[]string{},
 			tmpFile.Name(),
-			nil, // no approval manager for tests
+			nil, // approval manager
+			nil, // api config
 		)
 		if err != nil {
 			t.Fatalf("Failed to create connection: %v", err)
@@ -467,11 +477,13 @@ func TestConnectionManager_ExpiredConnections(t *testing.T) {
 	// Create a connection with very short duration
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		1*time.Millisecond, // Very short duration
 		[]string{},
 		tmpFile.Name(),
-		nil, // no approval manager for tests
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -506,7 +518,7 @@ func BenchmarkConnectionManager_CreateConnection(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = cm.CreateConnection("testuser", connConfig, 10*time.Minute, whitelist, tmpFile.Name(), nil)
+		_, _, _ = cm.CreateConnection("testuser", nil, connConfig, 10*time.Minute, whitelist, tmpFile.Name(), nil, nil)
 	}
 }
 
@@ -525,7 +537,7 @@ func BenchmarkConnectionManager_GetConnection(b *testing.B) {
 		Scheme: "http",
 	}
 
-	connectionID, _, _ := cm.CreateConnection("testuser", connConfig, 10*time.Minute, []string{}, tmpFile.Name(), nil)
+	connectionID, _, _ := cm.CreateConnection("testuser", nil, connConfig, 10*time.Minute, []string{}, tmpFile.Name(), nil, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -559,11 +571,13 @@ func TestHTTPProxyWithWhitelist(t *testing.T) {
 	// Create connection with whitelist
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		10*time.Minute,
 		whitelist,
 		tmpFile.Name(),
-		nil, // no approval manager
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -640,11 +654,13 @@ func TestHTTPProxyWithApprovalManager(t *testing.T) {
 	// Create connection without approval manager
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		10*time.Minute,
 		whitelist,
 		tmpFile.Name(),
-		nil, // no approval manager initially
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)
@@ -703,11 +719,13 @@ func TestPostgresConnectionNoProxy(t *testing.T) {
 	// Create postgres connection
 	connectionID, _, err := cm.CreateConnection(
 		"testuser",
+		nil, // roles
 		connConfig,
 		10*time.Minute,
 		whitelist,
 		tmpFile.Name(),
-		nil,
+		nil, // approval manager
+		nil, // api config
 	)
 	if err != nil {
 		t.Fatalf("Failed to create connection: %v", err)

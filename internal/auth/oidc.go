@@ -20,6 +20,7 @@ type OIDCProvider struct {
 	verifier      *oidc.IDTokenVerifier
 	rolesClaim    string
 	usernameClaim string
+	audience      string
 }
 
 // NewOIDCProvider creates a new OIDC provider
@@ -42,6 +43,11 @@ func NewOIDCProvider(cfg config.AuthProviderConfig) (*OIDCProvider, error) {
 	redirectURL, ok := cfg.Config["redirect_url"]
 	if !ok {
 		return nil, fmt.Errorf("redirect_url not configured")
+	}
+
+	audience, ok := cfg.Config["audience"]
+	if !ok || len(audience) == 0 {
+		return nil, fmt.Errorf("audience not configured or is empty string!")
 	}
 
 	ctx := context.Background()
@@ -77,6 +83,7 @@ func NewOIDCProvider(cfg config.AuthProviderConfig) (*OIDCProvider, error) {
 		verifier:      verifier,
 		rolesClaim:    rolesClaim,
 		usernameClaim: usernameClaim,
+		audience:      audience,
 	}, nil
 }
 
@@ -130,13 +137,13 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	}
 
 	// Verify ID token
-	_ = audit.Log("stdout", "system", "oidc_verify_start", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_verify_start", "oidc", map[string]any{
 		"has_raw_token": rawIDToken != "",
 	})
 
 	idTokenParsed, err := p.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		_ = audit.Log("stdout", "system", "oidc_verify_failed", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_verify_failed", "oidc", map[string]any{
 			"error": err.Error(),
 		})
 		return nil, fmt.Errorf("failed to verify ID token: %w", err)
@@ -145,14 +152,14 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	_ = audit.Log("stdout", "system", "oidc_verify_success", "oidc", nil)
 
 	// Extract claims
-	var claims map[string]interface{}
+	var claims map[string]any
 	if err := idTokenParsed.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
 	}
 
 	// Debug: log all claims to see what we received
 	_ = audit.Log("stdout", "system", "oidc_debug_claims", "oidc", claims)
-	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]any{
 		"roles_claim": p.rolesClaim,
 	})
 
@@ -168,12 +175,12 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 	// Extract roles
 	roles := []string{}
 	if rolesInterface, ok := claims[p.rolesClaim]; ok {
-		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]any{
 			"value": rolesInterface,
 			"type":  fmt.Sprintf("%T", rolesInterface),
 		})
 		switch v := rolesInterface.(type) {
-		case []interface{}:
+		case []any:
 			for _, role := range v {
 				if roleStr, ok := role.(string); ok {
 					roles = append(roles, roleStr)
@@ -189,31 +196,14 @@ func (p *OIDCProvider) Authenticate(credentials map[string]string) (*UserInfo, e
 		for k := range claims {
 			availableKeys = append(availableKeys, k)
 		}
-		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]any{
 			"roles_claim":    p.rolesClaim,
 			"available_keys": availableKeys,
 		})
 	}
-	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]any{
 		"roles": roles,
 	})
-
-	// SECURITY: OIDC users MUST have "admin" role
-	hasAdmin := false
-	for _, role := range roles {
-		if role == "admin" {
-			hasAdmin = true
-			break
-		}
-	}
-	if !hasAdmin {
-		_ = audit.Log("stdout", username, "oidc_auth_denied_no_admin", "oidc", map[string]interface{}{
-			"username": username,
-			"roles":    roles,
-			"reason":   "missing required 'admin' role",
-		})
-		return nil, fmt.Errorf("access denied: OIDC users must have 'admin' role")
-	}
 
 	return &UserInfo{
 		Username: username,
@@ -273,7 +263,7 @@ func (p *OIDCProvider) IsEnabled() bool {
 
 // GetAuthorizationURL builds the OIDC authorization URL
 func (p *OIDCProvider) GetAuthorizationURL(state, redirectURL string) (string, error) {
-	return p.oauth2Config.AuthCodeURL(state), nil
+	return p.oauth2Config.AuthCodeURL(state, oauth2.SetAuthURLParam("audience", p.audience)), nil
 }
 
 // ExchangeCodeForToken exchanges authorization code for access token and user info
@@ -281,7 +271,7 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	ctx := context.Background()
 
 	// DEBUG: Log function entry
-	_ = audit.Log("stdout", "system", "oidc_exchange_function_start", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_exchange_function_start", "oidc", map[string]any{
 		"provider":     p.name,
 		"redirect_url": redirectURL,
 		"has_code":     code != "",
@@ -290,7 +280,7 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	// Exchange authorization code for tokens
 	token, err := p.oauth2Config.Exchange(ctx, code)
 	if err != nil {
-		_ = audit.Log("stdout", "system", "oidc_exchange_failed", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_exchange_failed", "oidc", map[string]any{
 			"error":            err.Error(),
 			"error_type":       fmt.Sprintf("%T", err),
 			"scopes_requested": p.oauth2Config.Scopes,
@@ -299,7 +289,7 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	}
 
 	// Log detailed token information
-	tokenExtras := map[string]interface{}{}
+	tokenExtras := map[string]any{}
 	if token.Extra("error") != nil {
 		tokenExtras["error"] = token.Extra("error")
 	}
@@ -307,7 +297,7 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 		tokenExtras["error_description"] = token.Extra("error_description")
 	}
 
-	_ = audit.Log("stdout", "system", "oidc_exchange_success", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_exchange_success", "oidc", map[string]any{
 		"has_access_token": token.AccessToken != "",
 		"token_type":       token.TokenType,
 		"expires_in":       time.Until(token.Expiry).Seconds(),
@@ -326,16 +316,16 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	_ = audit.Log("stdout", "system", "oidc_verify_id_token_start", "oidc", nil)
 	idToken, err := p.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		_ = audit.Log("stdout", "system", "oidc_verify_id_token_failed", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_verify_id_token_failed", "oidc", map[string]any{
 			"error": err.Error(),
 		})
 		return nil, fmt.Errorf("failed to verify ID token: %w", err)
 	}
 
 	// Extract claims
-	var claims map[string]interface{}
+	var claims map[string]any
 	if err := idToken.Claims(&claims); err != nil {
-		_ = audit.Log("stdout", "system", "oidc_claims_parse_failed", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_claims_parse_failed", "oidc", map[string]any{
 			"error": err.Error(),
 		})
 		return nil, fmt.Errorf("failed to parse claims: %w", err)
@@ -343,9 +333,15 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 
 	// Debug: log all claims to see what we received
 	_ = audit.Log("stdout", "system", "oidc_debug_claims", "oidc", claims)
-	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_debug_roles_claim", "oidc", map[string]any{
 		"roles_claim": p.rolesClaim,
 	})
+
+	// Verify audience
+	err = p.validateAudience(claims)
+	if err != nil {
+		return nil, err
+	}
 
 	// Extract username
 	username, _ := claims[p.usernameClaim].(string)
@@ -359,12 +355,12 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 	// Extract roles
 	roles := []string{}
 	if rolesInterface, ok := claims[p.rolesClaim]; ok {
-		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_found", "oidc", map[string]any{
 			"value": rolesInterface,
 			"type":  fmt.Sprintf("%T", rolesInterface),
 		})
 		switch v := rolesInterface.(type) {
-		case []interface{}:
+		case []any:
 			for _, role := range v {
 				if roleStr, ok := role.(string); ok {
 					roles = append(roles, roleStr)
@@ -380,31 +376,14 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 		for k := range claims {
 			availableKeys = append(availableKeys, k)
 		}
-		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]interface{}{
+		_ = audit.Log("stdout", "system", "oidc_debug_roles_not_found", "oidc", map[string]any{
 			"roles_claim":    p.rolesClaim,
 			"available_keys": availableKeys,
 		})
 	}
-	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]interface{}{
+	_ = audit.Log("stdout", "system", "oidc_debug_extracted_roles", "oidc", map[string]any{
 		"roles": roles,
 	})
-
-	// SECURITY: OIDC users MUST have "admin" role
-	hasAdmin := false
-	for _, role := range roles {
-		if role == "admin" {
-			hasAdmin = true
-			break
-		}
-	}
-	if !hasAdmin {
-		_ = audit.Log("stdout", username, "oidc_auth_denied_no_admin", "oidc", map[string]interface{}{
-			"username": username,
-			"roles":    roles,
-			"reason":   "missing required 'admin' role",
-		})
-		return nil, fmt.Errorf("access denied: OIDC users must have 'admin' role")
-	}
 
 	sub, _ := claims["sub"].(string)
 
@@ -417,4 +396,15 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 			"subject":  sub,
 		},
 	}, nil
+}
+
+func (p *OIDCProvider) validateAudience(claims map[string]any) error {
+	aud, ok := claims["aud"].(string)
+	if !ok {
+		return fmt.Errorf("'aud' claim not found in token!")
+	}
+	if aud != p.audience {
+		return fmt.Errorf("'aud' does not match! Got '%s', but expected '%s'", aud, p.audience)
+	}
+	return nil
 }

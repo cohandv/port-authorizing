@@ -1,0 +1,5 @@
+user default off
+user acluser on >aclpass123 ~* &* +@all
+user readonly on >readonly123 ~* &* +@read +ping +info
+user admin on >admin123 ~* &* +@all -@dangerous
+

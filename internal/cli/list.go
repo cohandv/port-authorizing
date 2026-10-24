@@ -1,10 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 
 	"github.com/spf13/cobra"
 )
@@ -19,60 +16,38 @@ var listCmd = &cobra.Command{
 type connectionInfo struct {
 	Name     string            `json:"name"`
 	Type     string            `json:"type"`
+	Tags     []string          `json:"tags,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	// Get current context
-	ctx, err := GetCurrentContext()
+	// Get context (--context if passed, else the current context)
+	ctx, err := resolveContext(cmd)
 	if err != nil {
 		return fmt.Errorf("not logged in: %w. Please run 'login' first", err)
 	}
 
-	apiURL := ctx.APIURL
+	apiURL := resolveAPIURL(cmd, ctx.Name, ctx.APIURL)
 	token := ctx.Token
 
-	// Allow override from command line flag (only if explicitly provided)
-	if cmd.Root().PersistentFlags().Changed("api-url") {
-		apiURL, _ = cmd.Root().PersistentFlags().GetString("api-url")
-	}
-
-	// Create request
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/connections", apiURL), nil)
+	connections, err := fetchConnections(apiURL, token)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-
-	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("request failed: %s", string(body))
-	}
-
-	// Parse response
-	var connections []connectionInfo
-	if err := json.Unmarshal(body, &connections); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+		return err
 	}
 
 	// Display connections
 	fmt.Println("\nAvailable Connections:")
 	fmt.Println("----------------------")
 	for _, conn := range connections {
-		fmt.Printf("  • %s [%s]\n", conn.Name, conn.Type)
+		fmt.Printf("  • %s [%s]", conn.Name, conn.Type)
+		
+		// Show tags inline if present
+		if len(conn.Tags) > 0 {
+			fmt.Printf(" tags: %s", formatTags(conn.Tags))
+		}
+		fmt.Println()
+		
+		// Show metadata as indented details
 		if len(conn.Metadata) > 0 {
 			for key, value := range conn.Metadata {
 				fmt.Printf("    %s: %s\n", key, value)
@@ -82,4 +57,18 @@ func runList(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+func formatTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	result := ""
+	for i, tag := range tags {
+		if i > 0 {
+			result += ", "
+		}
+		result += tag
+	}
+	return result
 }

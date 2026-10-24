@@ -1,220 +1,302 @@
-environment: mytest
 server:
-  port: 8080
-  max_connection_duration: 2h
-  base_url: "http://api:8080"  # Use docker service name
-
+    port: 8080
+    max_connection_duration: 2h0m0s
+    base_url: http://api:8080
+    cache:
+        ttl: 2m0s
 auth:
-  jwt_secret: "your-secret-key-change-this-in-production"
-  token_expiry: 30m
-
-  # Authentication providers
-  providers:
-    # Keycloak OIDC (using docker service name)
-    - name: keycloak
-      type: oidc
-      enabled: true
-      config:
-        issuer: "http://keycloak:8180/realms/portauth"
-        client_id: "port-authorizing"
-        client_secret: "your-client-secret-change-in-production"
-        redirect_url: "http://localhost:8080/api/auth/oidc/callback"
-        roles_claim: "roles"
-        username_claim: "preferred_username"
-
-  # Local users (for testing)
-  users:
-    - username:
-        type: plain
-        value: admin
-      password:
-        type: plain
-        value: admin123
+    jwt_secret: your-secret-key-change-this-in-production
+    token_expiry: 30m0s
+    providers:
+        - name: keycloak
+          type: oidc
+          enabled: true
+          config:
+            client_id: port-authorizing
+            client_secret: your-client-secret-change-in-production
+            issuer: http://keycloak:8180/realms/portauth
+            redirect_url: http://localhost:8080/api/auth/oidc/callback
+            roles_claim: roles
+            username_claim: preferred_username
+    users:
+        - username: admin
+          password: admin123
+          roles:
+            - admin
+        - username: developer
+          password: dev123
+          roles:
+            - developer
+connections:
+    - name: postgres-test
+      type: postgres
+      host: postgres
+      port: 5432
+      duration: 3m0s
+      tags:
+        - env:test
+        - type:database
+      metadata:
+        database: testdb
+        description: Test PostgreSQL database (Docker)
+      backend_username:
+        ref: myconfigmap
+        ref_name: username
+        type: configmap
+        value: ""
+      backend_password: testpass
+      backend_database: testdb2
+    - name: nginx-server
+      type: http
+      host: nginx
+      port: 80
+      scheme: http
+      duration: 1h0m0s
+      tags:
+        - env:test
+        - type:web
+      metadata:
+        description: Test Nginx web server (Docker)
+    - name: redis-test-noauth
+      type: redis
+      host: redis-noauth
+      port: 6379
+      duration: 5m0s
+      tags:
+        - env:test
+        - type:cache
+      metadata:
+        database: "0"
+        description: Test Redis cache without authentication (Docker)
+    - name: redis-test-auth
+      type: redis
+      host: redis-auth
+      port: 6379
+      duration: 5m0s
+      tags:
+        - env:test
+        - type:cache
+      metadata:
+        database: "0"
+        description: Test Redis cache with legacy password-only authentication (Docker)
+      backend_password: redispass123
+    - name: redis-test-acl
+      type: redis
+      host: redis-acl
+      port: 6379
+      duration: 5m0s
+      tags:
+        - env:test
+        - type:cache
+      metadata:
+        database: "0"
+        description: Test Redis 6.0+ cache with ACL authentication (Docker)
+        redis_version: 6.0+
+      backend_username: acluser
+      backend_password: aclpass123
+    - name: postgres-prod
+      type: postgres
+      host: prod-db.example.com
+      port: 5432
+      duration: 15m0s
+      tags:
+        - env:production
+        - type:database
+      metadata:
+        description: Production PostgreSQL database
+    - name: internal-api
+      type: http
+      host: api.internal.example.com
+      port: 443
+      scheme: https
+      duration: 2h0m0s
+      tags:
+        - env:production
+        - type:api
+      metadata:
+        description: Internal REST API
+    - name: redis-prod
+      type: redis
+      host: redis.example.com
+      port: 6379
+      duration: 5m0s
+      tags:
+        - env:production
+        - type:cache
+      metadata:
+        description: Production Redis cache (password from K8s Secret)
+      backend_password:
+        ref: redis-prod-credentials
+        ref_name: password
+        type: secret
+        value: ""
+    - name: svc
+      type: k8s_services
+      host: ""
+      port: 0
+      tags:
+        - env:test
+      k8s_exclude_namespaces:
+        - kube-system
+      k8s_port_mappings:
+        - port_name: "500"
+          port: 5000
+          protocol: http
+policies:
+    - name: admin-database-full
       roles:
         - admin
-    - username:
-        type: plain
-        value: developer
-      password:
-        type: plain
-        value: dev123
+      tags:
+        - env:test
+      tag_match: all
+      whitelist:
+        - .*
+    - name: admin-cache-restricted
+      roles:
+        - admin
+      tags:
+        - type:cache
+      tag_match: all
+      whitelist:
+        - ^GET .*
+        - ^SET .*
+        - ^HGET .*
+        - ^HSET .*
+        - ^HDEL .*
+        - ^LPUSH .*
+        - ^RPUSH .*
+        - ^LPOP .*
+        - ^RPOP .*
+        - ^LRANGE .*
+        - ^SADD .*
+        - ^SREM .*
+        - ^SMEMBERS .*
+        - ^ZADD .*
+        - ^ZREM .*
+        - ^ZRANGE .*
+        - ^EXPIRE .*
+        - ^TTL .*
+        - ^EXISTS .*
+        - ^KEYS .*
+        - ^PING
+        - ^INFO.*
+        - ^DBSIZE
+        - ^COMMAND DOCS
+        - ^DEL .*
+    - name: dev-test
       roles:
         - developer
-
-connections:
-  # PostgreSQL test database (Docker service name)
-  - name: postgres-test
-    type: postgres
-    host: postgres  # Docker service name
-    port: 5432
-    duration: 3m
-    tags:
-      - env:test
-      - type:database
-    backend_username:
-      type: configmap
-      ref: "myconfigmap"
-      ref_name: "username"
-    backend_password:
-      type: plain
-      value: "testpass"
-    backend_database: "testdb"
-    metadata:
-      description: "Test PostgreSQL database (Docker)"
-      database: "testdb"
-
-  # Nginx web server (Docker service name)
-  - name: nginx-server
-    type: http
-    host: nginx  # Docker service name
-    port: 80
-    scheme: http
-    duration: 1h
-    tags:
-      - env:test
-      - type:web
-    metadata:
-      description: "Test Nginx web server (Docker)"
-
-  # Production examples (external hosts)
-  - name: postgres-prod
-    type: postgres
-    host: prod-db.example.com
-    port: 5432
-    duration: 15m
-    tags:
-      - env:production
-      - type:database
-    metadata:
-      description: "Production PostgreSQL database"
-
-  - name: internal-api
-    type: http
-    host: api.internal.example.com
-    port: 443
-    scheme: https
-    duration: 2h
-    tags:
-      - env:production
-      - type:api
-    metadata:
-      description: "Internal REST API"
-
-  - name: redis-cache
-    type: tcp
-    host: redis.example.com
-    port: 6379
-    duration: 5m
-    tags:
-      - env:production
-      - type:cache
-    metadata:
-      description: "Redis cache server"
-
-# Role-based access policies
-policies:
-  # Admin has full access to everything
-  - name: admin-all
-    roles:
-      - admin
-    tags:
-      - env:test
-      - env:production
-    tag_match: any
-    whitelist:
-      - ".*"
-
-  # Developer has full access to test
-  - name: dev-test
-    roles:
-      - developer
-    tags:
-      - env:test
-    tag_match: any
-    whitelist:
-      # PostgreSQL query patterns
-      - "^SELECT.*"        # Read data
-      - "^EXPLAIN.*"       # Query planning (read-only)
-      # PostgreSQL connection patterns (required by most clients)
-      - "^SET.*"           # Session configuration (e.g., SET extra_float_digits, SET DateStyle)
-      - "^SHOW.*"          # Show settings (read-only)
-      - "^BEGIN.*"         # Transaction control
-      - "^COMMIT.*"
-      - "^ROLLBACK.*"
-      # Note: Different PostgreSQL clients send different SET commands during connection.
-      # If connection fails with "Query blocked", check audit.log for the blocked command.
-
-      # HTTP patterns (for HTTP/HTTPS connections)
-      - "^GET /.*"
-      - "^POST /api/.*"
-      - "^PUT /api/.*"
-      - "^PATCH /api/.*"
-
-  # Developer has read-only access to production
-  - name: dev-prod-readonly
-    roles:
-      - developer
-    tags:
-      - env:production
-    tag_match: any
-    whitelist:
-      # PostgreSQL read-only queries
-      - "^SELECT.*"
-      - "^EXPLAIN.*"
-      # PostgreSQL connection patterns (required)
-      - "^SET.*"
-      - "^SHOW.*"
-      - "^BEGIN.*"
-      - "^COMMIT.*"
-      - "^ROLLBACK.*"
-      # HTTP read-only
-      - "^GET .*"
-
+      tags:
+        - env:test
+      tag_match: any
+      whitelist:
+        - ^SELECT.*
+        - ^EXPLAIN.*
+        - ^SET.*
+        - ^SHOW.*
+        - ^BEGIN.*
+        - ^COMMIT.*
+        - ^ROLLBACK.*
+        - ^GET /.*
+        - ^GET .*
+        - ^SET .*
+        - ^HGET .*
+        - ^HSET .*
+        - ^LPUSH .*
+        - ^RPUSH .*
+        - ^LRANGE .*
+        - ^SADD .*
+        - ^SMEMBERS .*
+        - ^ZADD .*
+        - ^ZRANGE .*
+        - ^EXPIRE .*
+        - ^TTL .*
+        - ^EXISTS .*
+        - ^KEYS .*
+        - ^PING
+        - ^POST /api/.*
+        - ^PUT /api/.*
+        - ^PATCH /api/.*
+    - name: dev-prod-readonly
+      roles:
+        - developer
+      tags:
+        - env:production
+      tag_match: any
+      whitelist:
+        - ^SELECT.*
+        - ^EXPLAIN.*
+        - ^SET.*
+        - ^SHOW.*
+        - ^BEGIN.*
+        - ^COMMIT.*
+        - ^ROLLBACK.*
+        - ^GET .*
 security:
-  enable_llm_analysis: false
-  llm_provider: "openai"
-  llm_api_key: ""
-  config_source_cache_ttl: 1m  # How long to cache ConfigMap/Secret values (default: 1m)
-
+    enable_llm_analysis: false
+    llm_provider: openai
 logging:
-  audit_log_path: "stdout"  # Output audit logs to stdout for Docker logging
-  log_level: "info"
-
-# Approval workflow configuration
+    audit_log_path: stdout
+    log_level: info
 approval:
-  enabled: true
-  patterns:
-     # HTTP DELETE requests
-     - pattern: "^DELETE /.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-
-     # PostgreSQL dangerous queries
-     - pattern: "^DELETE FROM.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^DROP TABLE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^DROP DATABASE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^TRUNCATE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-     - pattern: "^UPDATE.*"
-       tags: ["env:test"]
-       tag_match: all
-       timeout_seconds: 10
-  webhook:
-    url: "http://mock-approval:9000/webhook"  # Docker service name
-  slack:  # Not needed for mock server
-    webhook_url:
-      type: plain
-      value: "https://hooks.slack.com/services/"
-
+    enabled: true
+    patterns:
+        - pattern: ^DELETE /.*
+          tags:
+            - env:test
+          tag_match: all
+          roles:
+            - admin
+            - pepe
+          role_match: any
+          timeout_seconds: 30
+        - pattern: ^DELETE FROM.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DROP TABLE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DROP DATABASE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^TRUNCATE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^UPDATE.*
+          tags:
+            - env:test
+          tag_match: all
+          timeout_seconds: 10
+        - pattern: ^DEL .*
+          tags:
+            - env:test
+            - type:cache
+          tag_match: any
+          roles:
+            - admin
+          role_match: any
+          timeout_seconds: 30
+        - pattern: ^SET.*
+          tag_match: all
+          roles:
+            - admin
+          role_match: any
+          timeout_seconds: 300
+    webhook:
+        url: ""
+    slack:
+        webhook_url: ""
+kubernetes:
+    discovery:
+        configuration:
+            namespaces:
+                - port-authorizer
+environment: mytest

@@ -166,7 +166,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	whitelist := s.authz.GetWhitelistForConnection(roles, connectionName)
 
 	// Create connection (with whitelist for HTTP/HTTPS and approval manager)
-	connectionID, expiresAt, err := s.connMgr.CreateConnection(username, connConfig, duration, whitelist, s.config.Logging.AuditLogPath, s.approvalMgr)
+	connectionID, expiresAt, err := s.connMgr.CreateConnection(username, roles, connConfig, duration, whitelist, s.config.Logging.AuditLogPath, s.approvalMgr, s.config)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create connection")
 		return

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"github.com/davidcohan/port-authorizing/internal/approval"
 	"github.com/davidcohan/port-authorizing/internal/audit"
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"golang.org/x/net/http2"
 )
 
 // HTTPProxy handles HTTP/HTTPS proxying
@@ -25,30 +27,50 @@ type HTTPProxy struct {
 	auditLogPath string
 	username     string
 	connectionID string
+	roles        []string
+	apiConfig    *config.Config
 	approvalMgr  *approval.Manager
+}
+
+// createHTTPClient creates an HTTP client
+// Set forceHTTP1 to true to disable HTTP/2
+func createHTTPClient(forceHTTP1 bool) *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{},
+		// ForceAttemptHTTP2 controls whether HTTP/2 is enabled
+		ForceAttemptHTTP2: !forceHTTP1,
+	}
+
+	if !forceHTTP1 {
+		// Enable HTTP/2
+		http2.ConfigureTransport(transport)
+	}
+
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+	}
 }
 
 // NewHTTPProxy creates a new HTTP proxy
 func NewHTTPProxy(config *config.ConnectionConfig) *HTTPProxy {
 	return &HTTPProxy{
 		config: config,
-		client: &http.Client{
-			Timeout: 30 * time.Second, // Add timeout for HTTPS connections
-		},
+		client: createHTTPClient(false), // Enable HTTP/2
 	}
 }
 
 // NewHTTPProxyWithWhitelist creates a new HTTP proxy with whitelist support
-func NewHTTPProxyWithWhitelist(config *config.ConnectionConfig, whitelist []string, auditLogPath, username, connectionID string) *HTTPProxy {
+func NewHTTPProxyWithWhitelist(config *config.ConnectionConfig, whitelist []string, auditLogPath, username, connectionID string, roles []string, apiConfig *config.Config) *HTTPProxy {
 	return &HTTPProxy{
-		config: config,
-		client: &http.Client{
-			Timeout: 30 * time.Second, // Add timeout for HTTPS connections
-		},
+		config:       config,
+		client:       createHTTPClient(false), // Enable HTTP/2
 		whitelist:    whitelist,
 		auditLogPath: auditLogPath,
 		username:     username,
 		connectionID: connectionID,
+		roles:        roles,
+		apiConfig:    apiConfig,
 		approvalMgr:  nil, // Will be set later if approvals are enabled
 	}
 }
@@ -143,14 +165,17 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 	// Check if approval is required for this request
 	if p.approvalMgr != nil {
-		requiresApproval, timeout := p.approvalMgr.RequiresApproval(method, path, p.config.Tags)
+		requiresApproval, timeout := p.approvalMgr.RequiresApproval(method, path, p.config.Tags, p.roles)
 		if requiresApproval {
 			// Request approval
 			approvalReq := &approval.Request{
-				Username:     p.username,
-				ConnectionID: p.connectionID,
-				Method:       method,
-				Path:         path,
+				Username:       p.username,
+				ConnectionID:   p.connectionID,
+				ConnectionType: p.config.Type,
+				ConnectionName: p.config.Name,
+				Method:         method,
+				Path:           path,
+				Environment:    p.apiConfig.Environment,
 				Metadata: map[string]string{
 					"connection_name": p.config.Name,
 					"connection_type": p.config.Type,
@@ -225,10 +250,25 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 		scheme = "http"
 	}
 
+	// Build host - omit port for standard ports
+	targetHost := p.config.Host
+	if !((scheme == "https" && p.config.Port == 443) || (scheme == "http" && p.config.Port == 80)) {
+		targetHost = fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
+	}
+
+	// Parse path and query string
+	pathParts := strings.SplitN(path, "?", 2)
+	targetPath := pathParts[0]
+	targetQuery := ""
+	if len(pathParts) > 1 {
+		targetQuery = pathParts[1]
+	}
+
 	targetURL := &url.URL{
-		Scheme: scheme,
-		Host:   fmt.Sprintf("%s:%d", p.config.Host, p.config.Port),
-		Path:   path,
+		Scheme:   scheme,
+		Host:     targetHost,
+		Path:     targetPath,
+		RawQuery: targetQuery,
 	}
 
 	// Read headers from raw request
@@ -263,10 +303,18 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 	// Copy parsed headers
 	for key, values := range headers {
+		// Skip Host header - we need to use the backend's host
+		if strings.EqualFold(key, "Host") {
+			continue
+		}
 		for _, value := range values {
 			proxyReq.Header.Add(key, value)
 		}
 	}
+
+	// Set Host for the request
+	proxyReq.Host = p.config.Host
+	proxyReq.Header.Set("Host", p.config.Host)
 
 	// Execute request with context timeout
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -358,6 +406,25 @@ func (p *HTTPProxy) isRequestAllowed(request string) bool {
 			continue
 		}
 
+		if re.MatchString(request) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsHTTPRequestAllowed checks if an HTTP request matches any whitelist pattern
+func IsHTTPRequestAllowed(request string, whitelist []string) bool {
+	if len(whitelist) == 0 {
+		return true
+	}
+
+	for _, pattern := range whitelist {
+		re, err := regexp.Compile("(?i)" + pattern)
+		if err != nil {
+			continue
+		}
 		if re.MatchString(request) {
 			return true
 		}

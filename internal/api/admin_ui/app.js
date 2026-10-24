@@ -42,6 +42,129 @@ async function apiCall(endpoint, options = {}) {
     return response.json();
 }
 
+// Cache for K8s resources (ConfigMaps and Secrets)
+let k8sResourcesCache = null;
+
+// Fetch available ConfigMaps and Secrets from K8s
+async function fetchK8sResources() {
+    if (k8sResourcesCache) {
+        return k8sResourcesCache;
+    }
+    
+    try {
+        const data = await apiCall('/k8s/resources');
+        k8sResourcesCache = data;
+        return data;
+    } catch (error) {
+        console.warn('Failed to fetch K8s resources:', error);
+        return { configmaps: [], secrets: [], namespace: '' };
+    }
+}
+
+// Custom autocomplete functionality
+function setupAutocomplete(inputId, options) {
+    const input = document.getElementById(inputId);
+    const dropdown = document.getElementById(`${inputId}-dropdown`);
+    if (!input || !dropdown) return;
+    
+    let selectedIndex = -1;
+    let filteredOptions = [...options];
+    
+    // Function to filter and display options
+    function showDropdown(filterText = '') {
+        filterText = filterText.toLowerCase();
+        filteredOptions = options.filter(opt => opt.toLowerCase().includes(filterText));
+        
+        dropdown.innerHTML = '';
+        
+        if (filteredOptions.length === 0) {
+            const noResults = document.createElement('div');
+            noResults.className = 'autocomplete-option no-results';
+            noResults.textContent = 'No matches found';
+            dropdown.appendChild(noResults);
+        } else {
+            filteredOptions.forEach((option, index) => {
+                const div = document.createElement('div');
+                div.className = 'autocomplete-option';
+                div.textContent = option;
+                div.addEventListener('click', () => {
+                    input.value = option;
+                    dropdown.classList.remove('show');
+                    input.focus();
+                });
+                div.addEventListener('mouseenter', () => {
+                    selectedIndex = index;
+                    updateSelection();
+                });
+                dropdown.appendChild(div);
+            });
+        }
+        
+        selectedIndex = -1;
+        updateSelection();
+        dropdown.classList.add('show');
+    }
+    
+    function updateSelection() {
+        const items = dropdown.querySelectorAll('.autocomplete-option:not(.no-results)');
+        items.forEach((item, index) => {
+            if (index === selectedIndex) {
+                item.classList.add('selected');
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
+    
+    // Show dropdown on focus or click
+    input.addEventListener('focus', () => {
+        showDropdown(input.value);
+    });
+    
+    input.addEventListener('click', () => {
+        showDropdown(input.value);
+    });
+    
+    // Filter as user types
+    input.addEventListener('input', (e) => {
+        showDropdown(e.target.value);
+    });
+    
+    // Keyboard navigation
+    input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.autocomplete-option:not(.no-results)');
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!dropdown.classList.contains('show')) {
+                showDropdown(input.value);
+            } else {
+                selectedIndex = Math.min(selectedIndex + 1, filteredOptions.length - 1);
+                updateSelection();
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            updateSelection();
+        } else if (e.key === 'Enter') {
+            if (selectedIndex >= 0 && selectedIndex < filteredOptions.length) {
+                e.preventDefault();
+                input.value = filteredOptions[selectedIndex];
+                dropdown.classList.remove('show');
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.classList.remove('show');
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.remove('show');
+        }
+    });
+}
+
 // Helper function to escape HTML for safe display
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -198,6 +321,9 @@ async function loadDashboard() {
         document.getElementById('total-users').textContent = status.users || 0;
         document.getElementById('total-events').textContent = auditStats.total_events || 0;
 
+        // Update active connections list
+        updateActiveConnectionsList(status.active_connections_list || []);
+
         // Update last refresh time
         const now = new Date().toLocaleTimeString();
         const refreshElement = document.getElementById('last-refresh');
@@ -221,6 +347,34 @@ async function loadDashboard() {
         document.getElementById('total-users').textContent = '?';
         document.getElementById('total-events').textContent = '?';
     }
+}
+
+// Update active connections list in the dashboard
+function updateActiveConnectionsList(connections) {
+    const tbody = document.getElementById('active-connections-tbody');
+    if (!tbody) return;
+
+    if (!connections || connections.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No active connections</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = connections.map(conn => {
+        const createdAt = new Date(conn.created_at).toLocaleString();
+        const expiresAt = new Date(conn.expires_at).toLocaleString();
+        const typeClass = conn.connection_type === 'k8s_services' ? 'type-k8s' : '';
+        
+        return `
+            <tr>
+                <td>${escapeHtml(conn.username)}</td>
+                <td><strong>${escapeHtml(conn.connection_name)}</strong></td>
+                <td><span class="conn-type ${typeClass}">${escapeHtml(conn.connection_type)}</span></td>
+                <td>${conn.active_streams}</td>
+                <td>${createdAt}</td>
+                <td>${expiresAt}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 // Start dashboard auto-refresh
@@ -296,11 +450,27 @@ async function loadConnections() {
                 }
             }
 
+            // Handle k8s_services type display differently
+            let hostDisplay = escapeHtml(conn.host || '-');
+            let portDisplay = conn.port || '-';
+            
+            if (conn.type === 'k8s_services') {
+                // Show namespace info instead of host/port
+                if (conn.k8s_include_namespaces && conn.k8s_include_namespaces.length > 0) {
+                    hostDisplay = `<span title="Include: ${escapeHtml(conn.k8s_include_namespaces.join(', '))}">☸️ ${conn.k8s_include_namespaces.length} namespace(s)</span>`;
+                } else if (conn.k8s_exclude_namespaces && conn.k8s_exclude_namespaces.length > 0) {
+                    hostDisplay = `<span title="Exclude: ${escapeHtml(conn.k8s_exclude_namespaces.join(', '))}">☸️ All (excl. ${conn.k8s_exclude_namespaces.length})</span>`;
+                } else {
+                    hostDisplay = '☸️ All namespaces';
+                }
+                portDisplay = 'Auto';
+            }
+
             row.innerHTML = `
                 <td>${escapeHtml(conn.name || 'unnamed')}${warningBadge}</td>
                 <td>${escapeHtml(conn.type || 'unknown')}</td>
-                <td>${escapeHtml(conn.host || '-')}</td>
-                <td>${conn.port || '-'}</td>
+                <td>${hostDisplay}</td>
+                <td>${portDisplay}</td>
                 <td>${escapeHtml(duration)}</td>
                 <td>${escapeHtml(tags)}</td>
                 <td class="action-buttons">
@@ -325,8 +495,19 @@ function showConnectionForm() {
     // Reset ConfigSource fields to plain
     document.getElementById('conn-backend-username-type').value = 'plain';
     document.getElementById('conn-backend-password-type').value = 'plain';
+    document.getElementById('conn-redis-username-type').value = ''; // None by default
+    document.getElementById('conn-redis-password-type').value = 'plain';
     toggleConfigSourceFields('username');
     toggleConfigSourceFields('password');
+    toggleConfigSourceFields('redis-username');
+    toggleConfigSourceFields('redis-password');
+    
+    // Enable TLS by default for new connections
+    document.getElementById('conn-tls-enabled').checked = true;
+    toggleTLSOptions();
+    
+    // Clear K8s port mappings
+    clearK8sPortMappings();
     
     // Reset field visibility
     updateConnectionFields();
@@ -336,17 +517,45 @@ function showConnectionForm() {
 }
 
 // Toggle between plain value and ConfigMap/Secret fields
-function toggleConfigSourceFields(fieldType) {
-    const type = document.getElementById(`conn-backend-${fieldType}-type`).value;
+async function toggleConfigSourceFields(fieldType) {
+    // Handle Redis fields separately (different field naming)
+    const isRedisField = fieldType === 'redis-password' || fieldType === 'redis-username';
+    const typeSelectId = isRedisField
+        ? `conn-${fieldType}-type` 
+        : `conn-backend-${fieldType}-type`;
+    
+    const typeSelect = document.getElementById(typeSelectId);
+    if (!typeSelect) {
+        console.error(`Type select not found: ${typeSelectId}`);
+        return;
+    }
+    
+    const type = typeSelect.value;
     const plainFields = document.getElementById(`${fieldType}-plain-fields`);
     const k8sFields = document.getElementById(`${fieldType}-k8s-fields`);
     
+    // Handle empty/None value for redis-username (legacy auth)
+    if (fieldType === 'redis-username' && (type === '' || type === 'None')) {
+        if (plainFields) plainFields.style.display = 'none';
+        if (k8sFields) k8sFields.style.display = 'none';
+        return;
+    }
+    
     if (type === 'plain') {
-        plainFields.style.display = 'block';
-        k8sFields.style.display = 'none';
+        if (plainFields) plainFields.style.display = 'block';
+        if (k8sFields) k8sFields.style.display = 'none';
     } else {
-        plainFields.style.display = 'none';
-        k8sFields.style.display = 'block';
+        if (plainFields) plainFields.style.display = 'none';
+        if (k8sFields) k8sFields.style.display = 'block';
+        
+        // Fetch and populate K8s resources for autocomplete
+        const resources = await fetchK8sResources();
+        // Handle Redis fields differently (uses conn-redis-*-ref instead of conn-backend-*)
+        const inputId = isRedisField
+            ? `conn-${fieldType}-ref` 
+            : `conn-backend-${fieldType}-ref`;
+        const options = type === 'configmap' ? resources.configmaps : resources.secrets;
+        setupAutocomplete(inputId, options);
     }
 }
 
@@ -360,11 +569,29 @@ function hideConnectionForm() {
 
 // Close modal when clicking outside
 document.addEventListener('DOMContentLoaded', function() {
-    const modal = document.getElementById('connection-form-modal');
-    if (modal) {
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) {
+    const connectionModal = document.getElementById('connection-form-modal');
+    if (connectionModal) {
+        connectionModal.addEventListener('click', function(e) {
+            if (e.target === connectionModal) {
                 hideConnectionForm();
+            }
+        });
+    }
+    
+    const providersModal = document.getElementById('providers-form-modal');
+    if (providersModal) {
+        providersModal.addEventListener('click', function(e) {
+            if (e.target === providersModal) {
+                hideProvidersForm();
+            }
+        });
+    }
+    
+    const approvalPatternModal = document.getElementById('approval-pattern-form-modal');
+    if (approvalPatternModal) {
+        approvalPatternModal.addEventListener('click', function(e) {
+            if (e.target === approvalPatternModal) {
+                hideApprovalPatternForm();
             }
         });
     }
@@ -374,15 +601,123 @@ document.addEventListener('DOMContentLoaded', function() {
 function updateConnectionFields() {
     const type = document.getElementById('conn-type').value;
     const postgresFields = document.getElementById('postgres-fields');
+    const redisFields = document.getElementById('redis-fields');
+    const tlsFields = document.getElementById('tls-fields');
+    const hostPortFields = document.getElementById('host-port-fields');
+    const k8sServicesFields = document.getElementById('k8s-services-fields');
     
     // Hide all type-specific fields first
     postgresFields.style.display = 'none';
+    redisFields.style.display = 'none';
+    tlsFields.style.display = 'none';
+    k8sServicesFields.style.display = 'none';
+    
+    // Show/hide host/port based on type
+    if (type === 'k8s_services') {
+        hostPortFields.style.display = 'none';
+        k8sServicesFields.style.display = 'block';
+        // Remove required from host/port for k8s_services
+        document.getElementById('conn-host').removeAttribute('required');
+        document.getElementById('conn-port').removeAttribute('required');
+    } else {
+        hostPortFields.style.display = 'block';
+        // Re-add required for other types
+        document.getElementById('conn-host').setAttribute('required', 'required');
+        document.getElementById('conn-port').setAttribute('required', 'required');
+    }
     
     // Show relevant fields based on type
     if (type === 'postgres') {
         postgresFields.style.display = 'block';
+    } else if (type === 'redis') {
+        redisFields.style.display = 'block';
+        tlsFields.style.display = 'block'; // Show TLS ONLY for redis
     }
     // For http/https, we infer the scheme from the type itself
+}
+
+// Toggle TLS options visibility based on checkbox
+function toggleTLSOptions() {
+    const tlsEnabled = document.getElementById('conn-tls-enabled').checked;
+    const tlsOptions = document.getElementById('tls-options');
+    
+    if (tlsEnabled) {
+        tlsOptions.style.display = 'block';
+    } else {
+        tlsOptions.style.display = 'none';
+    }
+}
+
+// K8s Port Mappings management
+let k8sPortMappingCounter = 0;
+
+function addK8sPortMapping(port = '', protocol = 'http') {
+    const container = document.getElementById('k8s-port-mappings-container');
+    const id = k8sPortMappingCounter++;
+    
+    const row = document.createElement('div');
+    row.className = 'k8s-port-mapping-row';
+    row.id = `k8s-port-mapping-${id}`;
+    row.style.cssText = 'display: flex; gap: 10px; align-items: center; margin-bottom: 8px; padding: 8px; background: #1e1e1e; border-radius: 4px;';
+    
+    row.innerHTML = `
+        <input type="number" placeholder="Port (e.g., 8080)" value="${port}" 
+               class="k8s-pm-port" style="width: 100px; padding: 6px;">
+        <span style="color: #666;">→</span>
+        <select class="k8s-pm-protocol" style="padding: 6px;">
+            <option value="http" ${protocol === 'http' ? 'selected' : ''}>HTTP</option>
+            <option value="https" ${protocol === 'https' ? 'selected' : ''}>HTTPS</option>
+            <option value="postgres" ${protocol === 'postgres' ? 'selected' : ''}>PostgreSQL</option>
+            <option value="redis" ${protocol === 'redis' ? 'selected' : ''}>Redis</option>
+            <option value="tcp" ${protocol === 'tcp' ? 'selected' : ''}>TCP (raw)</option>
+        </select>
+        <button type="button" onclick="removeK8sPortMapping(${id})" 
+                style="background: #dc3545; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;">✕</button>
+    `;
+    
+    container.appendChild(row);
+}
+
+function removeK8sPortMapping(id) {
+    const row = document.getElementById(`k8s-port-mapping-${id}`);
+    if (row) {
+        row.remove();
+    }
+}
+
+function clearK8sPortMappings() {
+    const container = document.getElementById('k8s-port-mappings-container');
+    container.innerHTML = '';
+    k8sPortMappingCounter = 0;
+}
+
+function getK8sPortMappings() {
+    const container = document.getElementById('k8s-port-mappings-container');
+    const rows = container.querySelectorAll('.k8s-port-mapping-row');
+    const mappings = [];
+    
+    rows.forEach(row => {
+        const portValue = row.querySelector('.k8s-pm-port').value.trim();
+        const protocol = row.querySelector('.k8s-pm-protocol').value;
+        
+        if (portValue) {
+            mappings.push({
+                port: parseInt(portValue),
+                protocol: protocol
+            });
+        }
+    });
+    
+    return mappings;
+}
+
+function populateK8sPortMappings(mappings) {
+    clearK8sPortMappings();
+    if (mappings && Array.isArray(mappings)) {
+        mappings.forEach(m => {
+            addK8sPortMapping(m.port || '', m.protocol || 'http');
+        });
+    }
 }
 
 async function editConnection(name) {
@@ -410,54 +745,125 @@ async function editConnection(name) {
         // Update type-specific fields first
         updateConnectionFields();
         
-        // Populate backend username (ConfigSource)
-        console.log('Backend username data:', conn.backend_username);
-        if (conn.backend_username) {
-            if (typeof conn.backend_username === 'string') {
-                // Legacy plain string
-                console.log('backend_username is a string:', conn.backend_username);
-                document.getElementById('conn-backend-username-type').value = 'plain';
-                toggleConfigSourceFields('username');
-                document.getElementById('conn-backend-username').value = conn.backend_username;
-            } else if (conn.backend_username.type) {
-                // ConfigSource object
-                console.log('backend_username is ConfigSource, type:', conn.backend_username.type);
-                document.getElementById('conn-backend-username-type').value = conn.backend_username.type || 'plain';
-                toggleConfigSourceFields('username');
-                if (conn.backend_username.type === 'plain' || !conn.backend_username.type) {
-                    document.getElementById('conn-backend-username').value = conn.backend_username.value || '';
+        // Handle type-specific field population
+        if (conn.type === 'postgres') {
+            // Populate backend username (ConfigSource)
+            console.log('Backend username data:', conn.backend_username);
+            if (conn.backend_username) {
+                if (typeof conn.backend_username === 'string') {
+                    // Legacy plain string
+                    console.log('backend_username is a string:', conn.backend_username);
+                    document.getElementById('conn-backend-username-type').value = 'plain';
+                    toggleConfigSourceFields('username');
+                    document.getElementById('conn-backend-username').value = conn.backend_username;
+                } else if (conn.backend_username.type) {
+                    // ConfigSource object
+                    console.log('backend_username is ConfigSource, type:', conn.backend_username.type);
+                    document.getElementById('conn-backend-username-type').value = conn.backend_username.type || 'plain';
+                    toggleConfigSourceFields('username');
+                    if (conn.backend_username.type === 'plain' || !conn.backend_username.type) {
+                        document.getElementById('conn-backend-username').value = conn.backend_username.value || '';
+                    } else {
+                        document.getElementById('conn-backend-username-ref').value = conn.backend_username.ref || '';
+                        document.getElementById('conn-backend-username-refname').value = conn.backend_username.ref_name || '';
+                        document.getElementById('conn-backend-username-fallback').value = conn.backend_username.value || '';
+                    }
                 } else {
-                    document.getElementById('conn-backend-username-ref').value = conn.backend_username.ref || '';
-                    document.getElementById('conn-backend-username-refname').value = conn.backend_username.ref_name || '';
-                    document.getElementById('conn-backend-username-fallback').value = conn.backend_username.value || '';
+                    console.log('backend_username exists but no type field:', conn.backend_username);
                 }
             } else {
-                console.log('backend_username exists but no type field:', conn.backend_username);
+                console.log('No backend_username found');
+                // Default to plain if no username
+                document.getElementById('conn-backend-username-type').value = 'plain';
+                toggleConfigSourceFields('username');
             }
-        } else {
-            console.log('No backend_username found');
-            // Default to plain if no username
-            document.getElementById('conn-backend-username-type').value = 'plain';
-            toggleConfigSourceFields('username');
+            
+            // Don't populate password field - let user enter new password or leave empty to keep existing
+            // But do show the type if it was a ConfigSource
+            if (conn.backend_password && typeof conn.backend_password === 'object' && conn.backend_password.type) {
+                document.getElementById('conn-backend-password-type').value = conn.backend_password.type;
+                toggleConfigSourceFields('password');
+                if (conn.backend_password.type !== 'plain') {
+                    document.getElementById('conn-backend-password-ref').value = conn.backend_password.ref || '';
+                    document.getElementById('conn-backend-password-refname').value = conn.backend_password.ref_name || '';
+                    // Don't show fallback value for security
+                }
+            } else {
+                // Default to plain if no password info
+                document.getElementById('conn-backend-password-type').value = 'plain';
+                toggleConfigSourceFields('password');
+            }
+            
+            document.getElementById('conn-backend-database').value = conn.backend_database || '';
+        } else if (conn.type === 'redis') {
+            // Handle Redis username (Redis 6.0+ ACL)
+            if (conn.backend_username) {
+                if (typeof conn.backend_username === 'string') {
+                    // Legacy plain string
+                    document.getElementById('conn-redis-username-type').value = 'plain';
+                    toggleConfigSourceFields('redis-username');
+                    document.getElementById('conn-redis-username').value = conn.backend_username;
+                } else if (conn.backend_username.type) {
+                    // ConfigSource object
+                    document.getElementById('conn-redis-username-type').value = conn.backend_username.type || 'plain';
+                    toggleConfigSourceFields('redis-username');
+                    if (conn.backend_username.type === 'plain' || !conn.backend_username.type) {
+                        document.getElementById('conn-redis-username').value = conn.backend_username.value || '';
+                    } else {
+                        document.getElementById('conn-redis-username-ref').value = conn.backend_username.ref || '';
+                        document.getElementById('conn-redis-username-refname').value = conn.backend_username.ref_name || '';
+                        document.getElementById('conn-redis-username-fallback').value = conn.backend_username.value || '';
+                    }
+                }
+            } else {
+                // Default to no username (legacy auth)
+                document.getElementById('conn-redis-username-type').value = '';
+                toggleConfigSourceFields('redis-username');
+            }
+            
+            // Handle Redis password
+            if (conn.backend_password && typeof conn.backend_password === 'object' && conn.backend_password.type) {
+                document.getElementById('conn-redis-password-type').value = conn.backend_password.type;
+                toggleConfigSourceFields('redis-password');
+                if (conn.backend_password.type !== 'plain') {
+                    document.getElementById('conn-redis-password-ref').value = conn.backend_password.ref || '';
+                    document.getElementById('conn-redis-password-refname').value = conn.backend_password.ref_name || '';
+                    // Don't show fallback value for security
+                }
+            } else {
+                // Default to plain if no password info
+                document.getElementById('conn-redis-password-type').value = 'plain';
+                toggleConfigSourceFields('redis-password');
+            }
         }
         
-        // Don't populate password field - let user enter new password or leave empty to keep existing
-        // But do show the type if it was a ConfigSource
-        if (conn.backend_password && typeof conn.backend_password === 'object' && conn.backend_password.type) {
-            document.getElementById('conn-backend-password-type').value = conn.backend_password.type;
-            toggleConfigSourceFields('password');
-            if (conn.backend_password.type !== 'plain') {
-                document.getElementById('conn-backend-password-ref').value = conn.backend_password.ref || '';
-                document.getElementById('conn-backend-password-refname').value = conn.backend_password.ref_name || '';
-                // Don't show fallback value for security
-            }
+        // Populate TLS configuration (nested structure)
+        if (conn.tls && conn.tls.enabled) {
+            document.getElementById('conn-tls-enabled').checked = true;
+            document.getElementById('conn-tls-server-name').value = conn.tls.server_name || '';
+            document.getElementById('conn-tls-skip-verify').checked = conn.tls.skip_verify || false;
+            document.getElementById('conn-tls-ca-cert').value = conn.tls.ca_cert || '';
+            document.getElementById('conn-tls-client-cert').value = conn.tls.client_cert || '';
+            document.getElementById('conn-tls-client-key').value = conn.tls.client_key || '';
         } else {
-            // Default to plain if no password info
-            document.getElementById('conn-backend-password-type').value = 'plain';
-            toggleConfigSourceFields('password');
+            document.getElementById('conn-tls-enabled').checked = false;
         }
+        toggleTLSOptions();
         
-        document.getElementById('conn-backend-database').value = conn.backend_database || '';
+        // Populate K8s Services configuration
+        if (conn.type === 'k8s_services') {
+            document.getElementById('conn-k8s-include-namespaces').value = 
+                conn.k8s_include_namespaces ? conn.k8s_include_namespaces.join(', ') : '';
+            document.getElementById('conn-k8s-exclude-namespaces').value = 
+                conn.k8s_exclude_namespaces ? conn.k8s_exclude_namespaces.join(', ') : '';
+            document.getElementById('conn-k8s-ignore-services').value = 
+                conn.k8s_ignore_services ? conn.k8s_ignore_services.join(', ') : '';
+            // Populate port mappings
+            populateK8sPortMappings(conn.k8s_port_mappings);
+        } else {
+            // Clear port mappings for non-k8s_services types
+            clearK8sPortMappings();
+        }
         
         // Populate duration (now comes as string from API)
         document.getElementById('conn-duration').value = conn.duration || '';
@@ -489,10 +895,44 @@ async function saveConnection(event) {
     const connection = {
         name: document.getElementById('conn-name').value,
         type: connType,
-        host: document.getElementById('conn-host').value,
-        port: parseInt(document.getElementById('conn-port').value),
         tags: tags
     };
+    
+    // Add host/port only for non-k8s_services types
+    if (connType !== 'k8s_services') {
+        connection.host = document.getElementById('conn-host').value;
+        connection.port = parseInt(document.getElementById('conn-port').value);
+    } else {
+        // K8s Services specific configuration
+        const includeNamespaces = document.getElementById('conn-k8s-include-namespaces').value
+            .split(',')
+            .map(ns => ns.trim())
+            .filter(ns => ns !== '');
+        const excludeNamespaces = document.getElementById('conn-k8s-exclude-namespaces').value
+            .split(',')
+            .map(ns => ns.trim())
+            .filter(ns => ns !== '');
+        const ignoreServices = document.getElementById('conn-k8s-ignore-services').value
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => s !== '');
+        
+        if (includeNamespaces.length > 0) {
+            connection.k8s_include_namespaces = includeNamespaces;
+        }
+        if (excludeNamespaces.length > 0) {
+            connection.k8s_exclude_namespaces = excludeNamespaces;
+        }
+        if (ignoreServices.length > 0) {
+            connection.k8s_ignore_services = ignoreServices;
+        }
+        
+        // Add port mappings
+        const portMappings = getK8sPortMappings();
+        if (portMappings.length > 0) {
+            connection.k8s_port_mappings = portMappings;
+        }
+    }
 
     // Add duration if provided
     const duration = document.getElementById('conn-duration').value.trim();
@@ -567,6 +1007,96 @@ async function saveConnection(event) {
         }
         
         connection.backend_database = document.getElementById('conn-backend-database').value;
+    } else if (connType === 'redis') {
+        // Build backend_username ConfigSource (Redis 6.0+ ACL, optional)
+        const usernameType = document.getElementById('conn-redis-username-type').value;
+        if (usernameType && usernameType !== '') {
+            if (usernameType === 'plain') {
+                const username = document.getElementById('conn-redis-username').value;
+                if (username) {
+                    connection.backend_username = {
+                        type: 'plain',
+                        value: username
+                    };
+                }
+            } else {
+                const ref = document.getElementById('conn-redis-username-ref').value;
+                const refName = document.getElementById('conn-redis-username-refname').value;
+                if (ref && refName) {
+                    connection.backend_username = {
+                        type: usernameType,
+                        ref: ref,
+                        ref_name: refName,
+                        value: document.getElementById('conn-redis-username-fallback').value || ''
+                    };
+                }
+            }
+        }
+        
+        // Build backend_password ConfigSource (Redis password, optional)
+        const passwordType = document.getElementById('conn-redis-password-type').value;
+        if (passwordType === 'plain') {
+            const password = document.getElementById('conn-redis-password').value;
+            // Only include password if it's provided (not empty)
+            if (password) {
+                connection.backend_password = {
+                    type: 'plain',
+                    value: password
+                };
+            }
+        } else {
+            // For ConfigMap/Secret, always include the reference even if password field is empty
+            const ref = document.getElementById('conn-redis-password-ref').value;
+            const refName = document.getElementById('conn-redis-password-refname').value;
+            if (ref && refName) {
+                connection.backend_password = {
+                    type: passwordType,
+                    ref: ref,
+                    ref_name: refName,
+                    value: document.getElementById('conn-redis-password-fallback').value || ''
+                };
+            }
+        }
+    }
+    
+    // Add TLS configuration (ONLY for Redis) - nested structure
+    if (connType === 'redis') {
+        const tlsEnabled = document.getElementById('conn-tls-enabled').checked;
+        
+        if (tlsEnabled) {
+            // Build nested TLS object
+            const tlsConfig = {
+                enabled: true
+            };
+            
+            // Add optional TLS fields if they have values
+            const tlsServerName = document.getElementById('conn-tls-server-name').value.trim();
+            if (tlsServerName) {
+                tlsConfig.server_name = tlsServerName;
+            }
+            
+            const tlsSkipVerify = document.getElementById('conn-tls-skip-verify').checked;
+            if (tlsSkipVerify) {
+                tlsConfig.skip_verify = true;
+            }
+            
+            const tlsCACert = document.getElementById('conn-tls-ca-cert').value.trim();
+            if (tlsCACert) {
+                tlsConfig.ca_cert = tlsCACert;
+            }
+            
+            const tlsClientCert = document.getElementById('conn-tls-client-cert').value.trim();
+            if (tlsClientCert) {
+                tlsConfig.client_cert = tlsClientCert;
+            }
+            
+            const tlsClientKey = document.getElementById('conn-tls-client-key').value.trim();
+            if (tlsClientKey) {
+                tlsConfig.client_key = tlsClientKey;
+            }
+            
+            connection.tls = tlsConfig;
+        }
     }
 
     try {
@@ -1600,11 +2130,13 @@ async function loadApprovals() {
         // Load patterns
         const tbody = document.getElementById('approval-patterns-list');
         if (config.patterns.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5">No approval patterns configured</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7">No approval patterns configured</td></tr>';
         } else {
             tbody.innerHTML = config.patterns.map(pattern => `
                 <tr>
                     <td><code>${escapeHtml(pattern.pattern)}</code></td>
+                    <td>${pattern.roles && pattern.roles.length > 0 ? pattern.roles.join(', ') : '<em>All roles</em>'}</td>
+                    <td>${pattern.role_match || 'any'}</td>
                     <td>${pattern.tags ? pattern.tags.join(', ') : '<em>All connections</em>'}</td>
                     <td>${pattern.tag_match || 'all'}</td>
                     <td>${pattern.timeout_seconds}s</td>
@@ -1669,16 +2201,26 @@ async function toggleApprovalEnabled() {
 }
 
 function showApprovalPatternForm() {
-    document.getElementById('approval-pattern-form').style.display = 'block';
     document.getElementById('approval-pattern-form-title').textContent = 'Add Approval Pattern';
     document.getElementById('approvalPatternForm').reset();
     document.getElementById('approval-pattern-index').value = '';
     document.getElementById('approval-timeout').value = '300';
+    document.getElementById('approval-role-match').value = 'any';
+    document.getElementById('approval-tag-match').value = 'all';
+    
+    // Show modal
+    document.getElementById('approval-pattern-form-modal').style.display = 'flex';
+    
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
 }
 
 function hideApprovalPatternForm() {
-    document.getElementById('approval-pattern-form').style.display = 'none';
+    document.getElementById('approval-pattern-form-modal').style.display = 'none';
     document.getElementById('approvalPatternForm').reset();
+    
+    // Re-enable body scroll
+    document.body.style.overflow = '';
 }
 
 async function editApprovalPattern(index) {
@@ -1691,13 +2233,20 @@ async function editApprovalPattern(index) {
             return;
         }
         
-        document.getElementById('approval-pattern-form').style.display = 'block';
         document.getElementById('approval-pattern-form-title').textContent = 'Edit Approval Pattern';
         document.getElementById('approval-pattern-index').value = index;
         document.getElementById('approval-pattern').value = pattern.pattern;
         document.getElementById('approval-tags').value = pattern.tags ? pattern.tags.join(', ') : '';
         document.getElementById('approval-tag-match').value = pattern.tag_match || 'all';
+        document.getElementById('approval-roles').value = pattern.roles ? pattern.roles.join(', ') : '';
+        document.getElementById('approval-role-match').value = pattern.role_match || 'any';
         document.getElementById('approval-timeout').value = pattern.timeout_seconds;
+        
+        // Show modal
+        document.getElementById('approval-pattern-form-modal').style.display = 'flex';
+        
+        // Prevent body scroll
+        document.body.style.overflow = 'hidden';
     } catch (error) {
         showNotification('Failed to load pattern: ' + error.message, 'error');
     }
@@ -1714,10 +2263,17 @@ async function saveApprovalPattern(event) {
         .map(t => t.trim())
         .filter(t => t !== '');
     
+    const roles = document.getElementById('approval-roles').value
+        .split(',')
+        .map(r => r.trim())
+        .filter(r => r !== '');
+    
     const pattern = {
         pattern: document.getElementById('approval-pattern').value,
         tags: tags.length > 0 ? tags : null,
         tag_match: document.getElementById('approval-tag-match').value,
+        roles: roles.length > 0 ? roles : null,
+        role_match: document.getElementById('approval-role-match').value,
         timeout_seconds: parseInt(document.getElementById('approval-timeout').value)
     };
     
@@ -1759,7 +2315,7 @@ async function deleteApprovalPattern(index) {
     }
 }
 
-function toggleProviderConfigSourceFields(provider) {
+async function toggleProviderConfigSourceFields(provider) {
     const type = document.getElementById(`${provider}-url-type`).value;
     const plainFields = document.getElementById(`${provider}-plain-fields`);
     const k8sFields = document.getElementById(`${provider}-k8s-fields`);
@@ -1770,11 +2326,20 @@ function toggleProviderConfigSourceFields(provider) {
     } else {
         plainFields.style.display = 'none';
         k8sFields.style.display = 'block';
+        
+        // Fetch and populate K8s resources for autocomplete
+        const resources = await fetchK8sResources();
+        const inputId = `${provider}-url-ref`;
+        const options = type === 'configmap' ? resources.configmaps : resources.secrets;
+        setupAutocomplete(inputId, options);
     }
 }
 
 function showProvidersForm() {
     const config = window.currentApprovalConfig || {};
+    
+    // Reset form
+    document.getElementById('providersForm').reset();
     
     // Populate Webhook URL fields
     if (config.webhook && config.webhook.url) {
@@ -1814,12 +2379,19 @@ function showProvidersForm() {
         toggleProviderConfigSourceFields('slack');
     }
     
-    document.getElementById('providers-form').style.display = 'block';
+    // Show modal
+    document.getElementById('providers-form-modal').style.display = 'flex';
+    
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
 }
 
 function hideProvidersForm() {
-    document.getElementById('providers-form').style.display = 'none';
+    document.getElementById('providers-form-modal').style.display = 'none';
     document.getElementById('providersForm').reset();
+    
+    // Re-enable body scroll
+    document.body.style.overflow = '';
 }
 
 async function saveProviders(event) {

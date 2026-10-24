@@ -5,12 +5,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,12 +26,17 @@ import (
 	"github.com/xdg-go/scram"
 )
 
+// pgSSLRequestCode is the fixed protocol code Postgres uses to ask a server
+// whether it supports SSL/TLS before sending the real startup message.
+const pgSSLRequestCode = 80877103
+
 // PostgresAuthProxy handles postgres with credential substitution
 type PostgresAuthProxy struct {
 	config       *config.ConnectionConfig
 	auditLogPath string
 	username     string
 	connectionID string
+	roles        []string
 	apiConfig    *config.Config
 	whitelist    []string
 	approvalMgr  *approval.Manager
@@ -36,12 +44,13 @@ type PostgresAuthProxy struct {
 }
 
 // NewPostgresAuthProxy creates a postgres proxy with auth handling
-func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, connectionID string, apiConfig *config.Config, whitelist []string, resolver *config.ConfigSourceResolver) *PostgresAuthProxy {
+func NewPostgresAuthProxy(cfg *config.ConnectionConfig, auditLogPath, username, connectionID string, roles []string, apiConfig *config.Config, whitelist []string, resolver *config.ConfigSourceResolver) *PostgresAuthProxy {
 	return &PostgresAuthProxy{
 		config:       cfg,
 		auditLogPath: auditLogPath,
 		username:     username,
 		connectionID: connectionID,
+		roles:        roles,
 		apiConfig:    apiConfig,
 		whitelist:    whitelist,
 		approvalMgr:  nil, // Will be set later if approvals are enabled
@@ -143,9 +152,9 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		}
 	}
 
-	// Connect to backend with BACKEND credentials
+	// Connect to backend with BACKEND credentials (tries TLS first, falls back to plain)
 	backendAddr := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
-	backendConn, err := net.DialTimeout("tcp", backendAddr, 10*time.Second)
+	backendConn, err := p.dialBackend(backendAddr)
 	if err != nil {
 		p.sendAuthError(clientConn, "Backend connection failed")
 		return fmt.Errorf("failed to connect to backend: %w", err)
@@ -332,6 +341,150 @@ func (p *PostgresAuthProxy) sendBackendStartup(conn net.Conn, username, database
 
 	_, err := conn.Write(fullMsg)
 	return err
+}
+
+// dialBackend connects to the Postgres backend, opportunistically upgrading to
+// TLS via the standard Postgres SSLRequest negotiation. If the backend doesn't
+// support TLS, or the handshake fails (e.g. self-signed/unknown CA), it falls
+// back to a plain connection automatically.
+func (p *PostgresAuthProxy) dialBackend(addr string) (net.Conn, error) {
+	timeout := 10 * time.Second
+
+	// Explicit opt-out: tls.enabled=false skips negotiation entirely
+	if p.config.TLS != nil && !p.config.TLS.Enabled {
+		return net.DialTimeout("tcp", addr, timeout)
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	upgraded, err := p.tryUpgradeTLS(conn, timeout)
+	if err != nil {
+		log.Printf("Warning: TLS to Postgres backend %s failed, falling back to plain connection: %v", p.config.Name, err)
+		_ = conn.Close()
+		return net.DialTimeout("tcp", addr, timeout)
+	}
+
+	return upgraded, nil
+}
+
+// tryUpgradeTLS performs the Postgres SSLRequest handshake and, if the backend
+// supports it, upgrades conn to TLS. If the backend declines, the original
+// plain conn is returned unchanged. A deadline bounds the whole negotiation
+// (SSLRequest round-trip + TLS handshake) so a backend that accepts the TCP
+// connection and then stalls can't hang the goroutine indefinitely; it's
+// cleared before handing the connection back for normal use.
+func (p *PostgresAuthProxy) tryUpgradeTLS(conn net.Conn, timeout time.Duration) (net.Conn, error) {
+	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return nil, fmt.Errorf("failed to set negotiation deadline: %w", err)
+	}
+
+	req := make([]byte, 8)
+	binary.BigEndian.PutUint32(req[0:4], 8)
+	binary.BigEndian.PutUint32(req[4:8], pgSSLRequestCode)
+	if _, err := conn.Write(req); err != nil {
+		return nil, fmt.Errorf("failed to send SSLRequest: %w", err)
+	}
+
+	resp := make([]byte, 1)
+	if _, err := io.ReadFull(conn, resp); err != nil {
+		return nil, fmt.Errorf("failed to read SSLRequest response: %w", err)
+	}
+
+	switch resp[0] {
+	case 'N':
+		// Backend does not support TLS - continue on the plain connection
+		if err := conn.SetDeadline(time.Time{}); err != nil {
+			return nil, fmt.Errorf("failed to clear negotiation deadline: %w", err)
+		}
+		return conn, nil
+	case 'E':
+		return nil, fmt.Errorf("backend rejected SSLRequest: %s", readErrorResponseMessage(conn))
+	case 'S':
+		// Backend supports TLS - proceed to handshake below
+	default:
+		return nil, fmt.Errorf("unexpected SSLRequest response byte %q", resp[0])
+	}
+
+	// RootCAs is left nil unless CACert is set below, which makes crypto/tls fall
+	// back to the OS trust store (x509.SystemCertPool()). The Dockerfile installs
+	// AWS RDS's CA bundle into that trust store, so RDS certs verify by default.
+	tlsConfig := &tls.Config{ServerName: p.config.Host}
+	if p.config.TLS != nil {
+		if p.config.TLS.ServerName != "" {
+			tlsConfig.ServerName = p.config.TLS.ServerName
+		}
+		tlsConfig.InsecureSkipVerify = p.config.TLS.SkipVerify
+
+		if p.config.TLS.CACert != "" {
+			caCert, err := os.ReadFile(p.config.TLS.CACert)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+			}
+			caCertPool := x509.NewCertPool()
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				return nil, fmt.Errorf("failed to parse CA certificate")
+			}
+			tlsConfig.RootCAs = caCertPool
+		}
+
+		if p.config.TLS.ClientCert != "" && p.config.TLS.ClientKey != "" {
+			clientCert, err := tls.LoadX509KeyPair(p.config.TLS.ClientCert, p.config.TLS.ClientKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load client certificate: %w", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{clientCert}
+		}
+	}
+
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.Handshake(); err != nil {
+		return nil, fmt.Errorf("TLS handshake failed: %w", err)
+	}
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		return nil, fmt.Errorf("failed to clear negotiation deadline: %w", err)
+	}
+
+	log.Printf("DEBUG: Established TLS connection to Postgres backend %s (server=%s)", p.config.Name, tlsConfig.ServerName)
+	return tlsConn, nil
+}
+
+// readErrorResponseMessage reads a Postgres ErrorResponse body (the type byte
+// 'E' has already been consumed) and returns its human-readable message field,
+// falling back to a generic description if the body can't be read or parsed.
+func readErrorResponseMessage(conn net.Conn) string {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
+		return "malformed ErrorResponse (failed to read length)"
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+	if length < 4 {
+		return "malformed ErrorResponse (invalid length)"
+	}
+
+	body := make([]byte, length-4)
+	if _, err := io.ReadFull(conn, body); err != nil {
+		return "malformed ErrorResponse (failed to read body)"
+	}
+
+	for i := 0; i < len(body); {
+		fieldType := body[i]
+		i++
+		if fieldType == 0 {
+			break
+		}
+		end := i
+		for end < len(body) && body[end] != 0 {
+			end++
+		}
+		if fieldType == 'M' {
+			return string(body[i:end])
+		}
+		i = end + 1
+	}
+	return "no message field in ErrorResponse"
 }
 
 // handleBackendAuth handles backend authentication flow
@@ -729,14 +882,16 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 					// Check if approval is required for this query
 					if p.approvalMgr != nil {
 						normalizedQuery := strings.TrimSpace(query)
-						requiresApproval, timeout := p.approvalMgr.RequiresApproval(normalizedQuery, "", p.config.Tags)
+						requiresApproval, timeout := p.approvalMgr.RequiresApproval(normalizedQuery, "", p.config.Tags, p.roles)
 						if requiresApproval {
 							// Request approval
 							approvalReq := &approval.Request{
-								Username:     p.username,
-								ConnectionID: p.connectionID,
-								Method:       normalizedQuery, // For postgres, query is the "method"
-								Path:         "",              // No path for SQL queries
+								Username:       p.username,
+								ConnectionID:   p.connectionID,
+								ConnectionType: p.config.Type,
+								ConnectionName: p.config.Name,
+								Query:          normalizedQuery,
+								Environment:    p.apiConfig.Environment,
 								Metadata: map[string]string{
 									"connection_name": p.config.Name,
 									"connection_type": p.config.Type,

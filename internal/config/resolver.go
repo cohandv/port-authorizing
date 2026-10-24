@@ -374,3 +374,67 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 	return errors, nil
 }
 
+// ListConfigMaps returns a list of ConfigMap names in the resolver's namespace
+func (r *ConfigSourceResolver) ListConfigMaps(ctx context.Context) ([]string, error) {
+	namespace := r.namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	return r.ListConfigMapsInNamespace(ctx, namespace)
+}
+
+// ListConfigMapsInNamespace returns a list of ConfigMap names in the specified namespace
+func (r *ConfigSourceResolver) ListConfigMapsInNamespace(ctx context.Context, namespace string) ([]string, error) {
+	if r.client == nil {
+		return []string{}, fmt.Errorf("kubernetes client not available")
+	}
+
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	configMapList, err := r.client.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return []string{}, err
+	}
+
+	names := make([]string, 0, len(configMapList.Items))
+	for _, cm := range configMapList.Items {
+		names = append(names, cm.Name)
+	}
+
+	return names, nil
+}
+
+// ListSecrets returns a list of Secret names in the resolver's namespace
+func (r *ConfigSourceResolver) ListSecrets(ctx context.Context) ([]string, error) {
+	namespace := r.namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	return r.ListSecretsInNamespace(ctx, namespace)
+}
+
+// ListSecretsInNamespace returns a list of Secret names in the specified namespace
+func (r *ConfigSourceResolver) ListSecretsInNamespace(ctx context.Context, namespace string) ([]string, error) {
+	if r.client == nil {
+		return []string{}, fmt.Errorf("kubernetes client not available")
+	}
+
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	secretList, err := r.client.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return []string{}, err
+	}
+
+	names := make([]string, 0, len(secretList.Items))
+	for _, secret := range secretList.Items {
+		names = append(names, secret.Name)
+	}
+
+	return names, nil
+}
+

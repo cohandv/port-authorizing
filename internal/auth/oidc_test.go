@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/davidcohan/port-authorizing/internal/config"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewOIDCProvider_MissingFields(t *testing.T) {
@@ -24,6 +25,7 @@ func TestNewOIDCProvider_MissingFields(t *testing.T) {
 					"redirect_url":   "http://localhost:8080/callback",
 					"roles_claim":    "roles",
 					"username_claim": "preferred_username",
+					"audience":       "test",
 				},
 			},
 			wantErr: true,
@@ -40,6 +42,7 @@ func TestNewOIDCProvider_MissingFields(t *testing.T) {
 					"redirect_url":   "http://localhost:8080/callback",
 					"roles_claim":    "roles",
 					"username_claim": "preferred_username",
+					"audience":       "test",
 				},
 			},
 			wantErr: true,
@@ -56,6 +59,7 @@ func TestNewOIDCProvider_MissingFields(t *testing.T) {
 					"redirect_url":   "http://localhost:8080/callback",
 					"roles_claim":    "roles",
 					"username_claim": "preferred_username",
+					"audience":       "test",
 				},
 			},
 			wantErr: true,
@@ -72,10 +76,28 @@ func TestNewOIDCProvider_MissingFields(t *testing.T) {
 					"client_secret":  "secret",
 					"roles_claim":    "roles",
 					"username_claim": "preferred_username",
+					"audience":       "test",
 				},
 			},
 			wantErr: true,
 			errMsg:  "redirect_url",
+		},
+		{
+			name: "missing audience",
+			config: config.AuthProviderConfig{
+				Name: "test-oidc",
+				Type: "oidc",
+				Config: map[string]string{
+					"issuer":         "http://localhost:8180/realms/test",
+					"client_id":      "test",
+					"redirect_url":   "http://localhost:8080/callback",
+					"client_secret":  "secret",
+					"roles_claim":    "roles",
+					"username_claim": "preferred_username",
+				},
+			},
+			wantErr: true,
+			errMsg:  "audience",
 		},
 	}
 
@@ -109,6 +131,7 @@ func TestOIDCProvider_Methods(t *testing.T) {
 			"redirect_url":   "http://localhost:8080/callback",
 			"roles_claim":    "roles",
 			"username_claim": "preferred_username",
+			"audience":       "test",
 		},
 	}
 
@@ -167,6 +190,7 @@ func TestOIDCProvider_Authenticate_MissingCode(t *testing.T) {
 			"redirect_url":   "http://localhost:8080/callback",
 			"roles_claim":    "roles",
 			"username_claim": "preferred_username",
+			"audience":       "test",
 		},
 	}
 
@@ -204,4 +228,50 @@ func TestOIDCProvider_Authenticate_MissingCode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOIDCProvider_validateAudience(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+		claims  map[string]any
+	}{
+		{
+			name:    "valid aud",
+			wantErr: false,
+			claims: map[string]any{
+				"aud": "test",
+			},
+		},
+		{
+			name:    "'aud' does not match",
+			wantErr: true,
+			claims: map[string]any{
+				"aud": "invalid",
+			},
+		},
+		{
+			name:    "'aud' claim not found",
+			wantErr: true,
+			claims:  map[string]any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			provider := OIDCProvider{
+				audience: "test",
+			}
+
+			err := provider.validateAudience(tt.claims)
+			if tt.wantErr {
+				assert.ErrorContains(t, err, tt.name)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+
 }

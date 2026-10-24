@@ -53,6 +53,10 @@ func TestLog(t *testing.T) {
 	}
 
 	// Validate log entry fields
+	if logEntry["level"] != "audit" {
+		t.Errorf("level = %v, want 'audit'", logEntry["level"])
+	}
+
 	if logEntry["username"] != username {
 		t.Errorf("username = %v, want %v", logEntry["username"], username)
 	}

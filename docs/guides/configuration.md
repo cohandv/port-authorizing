@@ -27,7 +27,7 @@ Your `config.yaml` is configured with:
 ## Configuration File Location
 
 ```
-/Users/davidcohan/freelos/port-authorizing/config.yaml
+~/src/port-authorizing/config.yaml
 ```
 
 ## Key Configuration Sections

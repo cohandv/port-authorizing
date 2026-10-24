@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL database for testing proxy
   postgres:
@@ -115,10 +113,6 @@ services:
         condition: service_started  # Changed from healthy to started (keycloak takes time)
       mock-approval:
         condition: service_started
-      redis-noauth:
-        condition: service_healthy
-      redis-auth:
-        condition: service_healthy
       kafka-1:
         condition: service_healthy
       kafka-2:
@@ -225,32 +219,6 @@ services:
       - "8181:80"
     depends_on:
       - openldap
-
-  # Redis without authentication
-  redis-noauth:
-    image: redis:alpine
-    container_name: port-auth-redis-noauth
-    ports:
-      - "6379:6379"
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # Redis with authentication
-  redis-auth:
-    image: redis:alpine
-    container_name: port-auth-redis-auth
-    ports:
-      - "6380:6379"
-    command: redis-server --requirepass redispass --maxmemory 256mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
   # Kafka Node 1
   kafka-1:

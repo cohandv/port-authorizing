@@ -111,15 +111,34 @@ func (s *SlackProvider) SendApprovalRequest(ctx context.Context, req *Request) e
 
 // buildSlackMessage constructs a rich Slack message with interactive buttons
 func (s *SlackProvider) buildSlackMessage(req *Request) slackMessage {
-	// Determine emoji based on HTTP method
-	methodEmoji := s.getMethodEmoji(req.Method)
-
 	// Build approval URLs
 	approveURL := fmt.Sprintf("%s/api/approvals/%s/approve", s.apiBaseURL, req.ID)
 	rejectURL := fmt.Sprintf("%s/api/approvals/%s/reject", s.apiBaseURL, req.ID)
 
+	// Build title based on connection type
+	title := s.buildTitle(req)
+
+	// Build fields based on connection type
+	fields := []slackTextBlock{
+		{
+			Type: "mrkdwn",
+			Text: fmt.Sprintf("*User:*\n%s", req.Username),
+		},
+		{
+			Type: "mrkdwn",
+			Text: fmt.Sprintf("*Connection:*\n%s", req.ConnectionName),
+		},
+		{
+			Type: "mrkdwn",
+			Text: fmt.Sprintf("*Type:*\n%s", req.ConnectionType),
+		},
+	}
+
+	// Add type-specific fields
+	fields = append(fields, s.getTypeSpecificFields(req)...)
+
 	return slackMessage{
-		Text: fmt.Sprintf("🔐 Approval Required: %s %s", req.Method, req.Path),
+		Text: title,
 		Blocks: []slackBlock{
 			{
 				Type: "header",
@@ -130,24 +149,7 @@ func (s *SlackProvider) buildSlackMessage(req *Request) slackMessage {
 			},
 			{
 				Type: "section",
-				Fields: []slackTextBlock{
-					{
-						Type: "mrkdwn",
-						Text: fmt.Sprintf("*User:*\n%s", req.Username),
-					},
-					{
-						Type: "mrkdwn",
-						Text: fmt.Sprintf("*Connection:*\n%s", req.ConnectionID),
-					},
-					{
-						Type: "mrkdwn",
-						Text: fmt.Sprintf("*Method:*\n%s %s", methodEmoji, req.Method),
-					},
-					{
-						Type: "mrkdwn",
-						Text: fmt.Sprintf("*Path:*\n`%s`", req.Path),
-					},
-				},
+				Fields: fields,
 			},
 			{
 				Type: "section",
@@ -202,6 +204,61 @@ func (s *SlackProvider) buildSlackMessage(req *Request) slackMessage {
 			},
 		},
 	}
+}
+
+// buildTitle creates a title based on connection type
+func (s *SlackProvider) buildTitle(req *Request) string {
+	switch req.ConnectionType {
+	case "postgres":
+		return fmt.Sprintf("🔐 Approval Required: SQL Query on %s", req.ConnectionName)
+	case "redis":
+		return fmt.Sprintf("🔐 Approval Required: Redis Command on %s", req.ConnectionName)
+	case "http", "https":
+		return fmt.Sprintf("🔐 Approval Required: %s %s", req.Method, req.Path)
+	default:
+		return fmt.Sprintf("🔐 Approval Required: %s", req.ConnectionName)
+	}
+}
+
+// getTypeSpecificFields returns connection type-specific fields for Slack message
+func (s *SlackProvider) getTypeSpecificFields(req *Request) []slackTextBlock {
+	switch req.ConnectionType {
+	case "postgres":
+		if req.Query != "" {
+			return []slackTextBlock{
+				{
+					Type: "mrkdwn",
+					Text: fmt.Sprintf("*Query:*\n```%s```", req.Query),
+				},
+			}
+		}
+	case "redis":
+		if req.Command != "" {
+			return []slackTextBlock{
+				{
+					Type: "mrkdwn",
+					Text: fmt.Sprintf("*Command:*\n`%s`", req.Command),
+				},
+			}
+		}
+	case "http", "https":
+		fields := []slackTextBlock{}
+		if req.Method != "" {
+			methodEmoji := s.getMethodEmoji(req.Method)
+			fields = append(fields, slackTextBlock{
+				Type: "mrkdwn",
+				Text: fmt.Sprintf("*Method:*\n%s %s", methodEmoji, req.Method),
+			})
+		}
+		if req.Path != "" {
+			fields = append(fields, slackTextBlock{
+				Type: "mrkdwn",
+				Text: fmt.Sprintf("*Path:*\n`%s`", req.Path),
+			})
+		}
+		return fields
+	}
+	return []slackTextBlock{}
 }
 
 // getMethodEmoji returns an emoji for the HTTP method

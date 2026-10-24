@@ -8,7 +8,7 @@
 
 **Secure proxy for any service with authentication, authorization, and audit logging.**
 
-Port Authorizing acts as a transparent proxy between clients and backend services (PostgreSQL, HTTP, TCP, etc.), providing centralized authentication, role-based authorization, protocol-specific filtering, and comprehensive audit logging.
+Port Authorizing acts as a transparent proxy between clients and backend services (PostgreSQL, Redis, HTTP, TCP, etc.), providing centralized authentication, role-based authorization, protocol-specific filtering, and comprehensive audit logging.
 
 ## Tools
 
@@ -20,9 +20,9 @@ Port Authorizing acts as a transparent proxy between clients and backend service
 
 - 🔐 **Multi-Provider Authentication** - Local users, OIDC (Keycloak), LDAP, SAML2
 - 🛡️ **Role-Based Access Control** - Tag-based policies with different access per role
-- 📝 **Protocol-Specific Filtering** - SQL query whitelisting for PostgreSQL, request filtering for HTTP
+- 📝 **Protocol-Specific Filtering** - SQL query whitelisting for PostgreSQL, command whitelisting for Redis, request filtering for HTTP
 - 🔒 **Credential Hiding** - Users never see backend credentials
-- 🌐 **Transparent Proxying** - Works with standard clients (psql, curl, etc.)
+- 🌐 **Transparent Proxying** - Works with standard clients (psql, redis-cli, curl, etc.)
 - ⏱️ **Time-Limited Access** - Connections expire automatically
 - 📊 **Full Audit Logging** - All actions logged with user attribution
 - ✨ **Resilient Startup** - Server starts even if auth providers (OIDC/LDAP/SAML2) are temporarily unavailable
@@ -31,8 +31,9 @@ Port Authorizing acts as a transparent proxy between clients and backend service
 
 | Protocol | Status | Features | Notes |
 |----------|--------|----------|-------|
-| PostgreSQL | ✅ **Mature** | Authentication, query whitelisting, audit logging | Fully protocol-aware with username validation |
-| HTTP/HTTPS | ✅ **Mature** | Transparent proxying, authentication, audit logging | Full request/response handling |
+| PostgreSQL | ✅ **Mature** | Authentication, query whitelisting, audit logging, approval workflow | Fully protocol-aware with username validation |
+| Redis | ✅ **Mature** | Authentication, command whitelisting, audit logging, approval workflow | Full RESP protocol support with command filtering |
+| HTTP/HTTPS | ✅ **Mature** | Transparent proxying, authentication, audit logging, approval workflow | Full request/response handling |
 | TCP | 🚧 **Beta** | Basic proxying, authentication | Limited protocol awareness, suitable for simple services |
 
 ## Quick Start
@@ -41,7 +42,7 @@ Port Authorizing acts as a transparent proxy between clients and backend service
 
 **Using install script (recommended):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/davidcohan/port-authorizing/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cohandv/port-authorizing/refs/heads/main/scripts/install.sh?token=<<YOUR_TOKEN>> | bash
 ```
 
 **Manual download:**
@@ -81,6 +82,10 @@ port-authorizing connect postgres-prod -l 5433
 
 # Use standard client
 psql -h localhost -p 5433 -U your-username -d database
+
+# Or connect to Redis
+port-authorizing connect redis-cache -l 6379
+redis-cli -h localhost -p 6379
 
 # Or connect to HTTP service
 port-authorizing connect api-server -l 8080
@@ -221,6 +226,25 @@ docker-compose up -d
 docker-compose down
 ```
 
+### Updating the pinned RDS CA bundle
+
+`Dockerfile` and `Dockerfile.k8s` install AWS RDS's CA bundle into the image's trust
+store so TLS to RDS Postgres/Redis backends verifies out of the box. The download is
+pinned to a sha256 checksum, so the build fails loudly if the fetched bundle doesn't
+match instead of silently trusting whatever came back over the network.
+
+AWS rotates this bundle rarely (it's a multi-year-notice event), so the pin is
+updated by hand rather than re-fetched on every build. To update it:
+
+```bash
+curl -fsSL -o /tmp/rds-global-bundle.crt \
+    https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+shasum -a 256 /tmp/rds-global-bundle.crt
+```
+
+Replace the hash in the `sha256sum -c` line in both `Dockerfile` and `Dockerfile.k8s`
+with the new value.
+
 ## Security
 
 - ✅ **No credential sharing** - Backend passwords never exposed to users
@@ -274,7 +298,7 @@ MIT License - see LICENSE file for details.
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **GitHub**: [davidcohan/port-authorizing](https://github.com/cohandv/port-authorizing)
+- **GitHub**: [cohandv/port-authorizing](https://github.com/cohandv/port-authorizing)
 - **Docker Hub**: [cohandv/port-authorizing](https://hub.docker.com/r/cohandv/port-authorizing)
 - **Releases**: [GitHub Releases](https://github.com/cohandv/port-authorizing/releases)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)

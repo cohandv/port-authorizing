@@ -360,3 +360,59 @@ func TestConfigErrors_Structure(t *testing.T) {
 	}
 }
 
+func TestListConfigMaps(t *testing.T) {
+	// Create resolver (may or may not have K8s client depending on environment)
+	resolver, err := NewConfigSourceResolver("")
+	if err != nil {
+		t.Fatalf("NewConfigSourceResolver failed: %v", err)
+	}
+
+	// If no K8s client, should return error
+	// If K8s client available, should return list (may be empty)
+	configMaps, err := resolver.ListConfigMaps(context.Background())
+	
+	if resolver.client == nil {
+		// No K8s client - should error
+		if err == nil {
+			t.Error("Expected error when K8s client not available")
+		}
+		if len(configMaps) != 0 {
+			t.Errorf("Expected empty list without K8s client, got %d items", len(configMaps))
+		}
+	} else {
+		// K8s client available - should succeed (list may be empty)
+		if err != nil {
+			t.Logf("ListConfigMaps returned error (may be expected if no access): %v", err)
+		}
+		t.Logf("Found %d ConfigMaps in namespace", len(configMaps))
+	}
+}
+
+func TestListSecrets(t *testing.T) {
+	// Create resolver (may or may not have K8s client depending on environment)
+	resolver, err := NewConfigSourceResolver("")
+	if err != nil {
+		t.Fatalf("NewConfigSourceResolver failed: %v", err)
+	}
+
+	// If no K8s client, should return error
+	// If K8s client available, should return list (may be empty)
+	secrets, err := resolver.ListSecrets(context.Background())
+	
+	if resolver.client == nil {
+		// No K8s client - should error
+		if err == nil {
+			t.Error("Expected error when K8s client not available")
+		}
+		if len(secrets) != 0 {
+			t.Errorf("Expected empty list without K8s client, got %d items", len(secrets))
+		}
+	} else {
+		// K8s client available - should succeed (list may be empty)
+		if err != nil {
+			t.Logf("ListSecrets returned error (may be expected if no access): %v", err)
+		}
+		t.Logf("Found %d Secrets in namespace", len(secrets))
+	}
+}
+

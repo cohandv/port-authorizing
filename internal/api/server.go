@@ -31,7 +31,9 @@ type Server struct {
 
 // NewServer creates a new API server instance
 func NewServer(cfg *config.Config) (*Server, error) {
-	// Configure audit memory buffer
+	// Configure audit system
+	audit.SetEnvironment(cfg.Environment)
+	
 	memoryMB := cfg.Logging.AuditMemoryMB
 	if memoryMB == 0 {
 		memoryMB = 1 // Default to 1MB
@@ -49,9 +51,9 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	if cfg.Storage != nil {
 		resolverNamespace = cfg.Storage.Namespace
 	}
-	cacheTTL := cfg.Security.ConfigSourceCacheTTL
+	cacheTTL := cfg.Server.Cache.TTL
 	if cacheTTL == 0 {
-		cacheTTL = 1 * time.Minute // Default 1 minute
+		cacheTTL = 1 * time.Minute
 	}
 	resolver, err := config.NewConfigSourceResolverWithTTL(resolverNamespace, cacheTTL)
 	if err != nil {
@@ -69,7 +71,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	// Configure approval providers if enabled
 	if cfg.Approval != nil && cfg.Approval.Enabled {
 		providersConfigured := 0
-		
+
 		// Register webhook provider if configured (even if currently empty - allows dynamic enable/disable)
 		if cfg.Approval.Webhook != nil {
 			webhookProvider := approval.NewWebhookProvider(cfg.Approval.Webhook.URL, resolver)
@@ -93,7 +95,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 				fmt.Printf("⚠ Registered Slack approval provider (type: %s, has_value: false) - will resolve dynamically\n", cfg.Approval.Slack.WebhookURL.Type)
 			}
 		}
-		
+
 		if providersConfigured == 0 && cfg.Approval.Webhook == nil && cfg.Approval.Slack == nil {
 			fmt.Printf("⚠ WARNING: Approval workflow is ENABLED but NO approval providers are configured!\n")
 			fmt.Printf("   Approval requests will fail with 'no approval providers configured'.\n")
@@ -103,7 +105,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		// Add approval patterns
 		for _, pattern := range cfg.Approval.Patterns {
 			timeout := time.Duration(pattern.TimeoutSeconds) * time.Second
-			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, timeout); err != nil {
+			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, pattern.Roles, pattern.RoleMatch, timeout); err != nil {
 				return nil, fmt.Errorf("failed to add approval pattern: %w", err)
 			}
 		}
@@ -130,7 +132,9 @@ func (s *Server) ReloadConfig(newCfg *config.Config) error {
 	s.configMu.Lock()
 	defer s.configMu.Unlock()
 
-	// Reconfigure audit memory buffer
+	// Reconfigure audit system
+	audit.SetEnvironment(newCfg.Environment)
+	
 	memoryMB := newCfg.Logging.AuditMemoryMB
 	if memoryMB == 0 {
 		memoryMB = 1 // Default to 1MB
@@ -151,9 +155,9 @@ func (s *Server) ReloadConfig(newCfg *config.Config) error {
 	if newCfg.Storage != nil {
 		resolverNamespace = newCfg.Storage.Namespace
 	}
-	cacheTTL := newCfg.Security.ConfigSourceCacheTTL
+	cacheTTL := newCfg.Server.Cache.TTL
 	if cacheTTL == 0 {
-		cacheTTL = 1 * time.Minute // Default 1 minute
+		cacheTTL = 1 * time.Minute
 	}
 	newResolver, err := config.NewConfigSourceResolverWithTTL(resolverNamespace, cacheTTL)
 	if err != nil {
@@ -164,7 +168,7 @@ func (s *Server) ReloadConfig(newCfg *config.Config) error {
 	approvalMgr := approval.NewManager(5*time.Minute, newCfg.Environment)
 	if newCfg.Approval != nil && newCfg.Approval.Enabled {
 		providersConfigured := 0
-		
+
 		// Register webhook provider if configured (even if currently empty - allows dynamic enable/disable)
 		if newCfg.Approval.Webhook != nil {
 			webhookProvider := approval.NewWebhookProvider(newCfg.Approval.Webhook.URL, newResolver)
@@ -188,7 +192,7 @@ func (s *Server) ReloadConfig(newCfg *config.Config) error {
 				fmt.Printf("⚠ Registered Slack approval provider (type: %s, has_value: false) - will resolve dynamically\n", newCfg.Approval.Slack.WebhookURL.Type)
 			}
 		}
-		
+
 		if providersConfigured == 0 && newCfg.Approval.Webhook == nil && newCfg.Approval.Slack == nil {
 			fmt.Printf("⚠ WARNING: Approval workflow is ENABLED but NO approval providers are configured!\n")
 			fmt.Printf("   Approval requests will fail with 'no approval providers configured'.\n")
@@ -197,7 +201,7 @@ func (s *Server) ReloadConfig(newCfg *config.Config) error {
 
 		for _, pattern := range newCfg.Approval.Patterns {
 			timeout := time.Duration(pattern.TimeoutSeconds) * time.Second
-			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, timeout); err != nil {
+			if err := approvalMgr.AddApprovalPattern(pattern.Pattern, pattern.Tags, pattern.TagMatch, pattern.Roles, pattern.RoleMatch, timeout); err != nil {
 				return fmt.Errorf("failed to add approval pattern: %w", err)
 			}
 		}
@@ -249,6 +253,10 @@ func (s *Server) setupRoutes() {
 
 	// Transparent proxy endpoint - accepts TCP connection and forwards to target
 	api.HandleFunc("/proxy/{connectionID}", s.handleProxyStream).Methods("POST", "GET", "PUT", "DELETE", "CONNECT", "PATCH", "OPTIONS")
+
+	// K8s Services discovery endpoint
+	// CLI calls this to get service list, then opens individual proxy connections via /api/proxy/{connID}
+	api.HandleFunc("/k8s-services/{connectionID}/services", s.handleK8sServicesListServices).Methods("GET", "OPTIONS")
 
 	// Approval endpoints (can be accessed via webhook callbacks, so don't require auth)
 	s.router.HandleFunc("/api/approvals/{request_id}/approve", s.handleApproveRequest).Methods("GET", "POST", "OPTIONS")
@@ -304,6 +312,9 @@ func (s *Server) setupRoutes() {
 
 	// System status
 	adminAPI.HandleFunc("/status", s.handleGetSystemStatus).Methods("GET", "OPTIONS")
+
+	// Kubernetes resources (ConfigMaps/Secrets listing)
+	adminAPI.HandleFunc("/k8s/resources", s.handleListK8sResources).Methods("GET", "OPTIONS")
 
 	// Admin UI routes (HTML/CSS/JS served without auth - auth handled by JavaScript)
 	// These MUST come after /admin/api routes to avoid conflicts

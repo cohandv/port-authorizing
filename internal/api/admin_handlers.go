@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -121,34 +122,45 @@ func (s *Server) handleRollbackConfig(w http.ResponseWriter, r *http.Request) {
 
 // ConnectionResponse is a connection config with duration as string for JSON
 type ConnectionResponse struct {
-	Name            string                `json:"name"`
-	Type            string                `json:"type"`
-	Host            string                `json:"host"`
-	Port            int                   `json:"port"`
-	Scheme          string                `json:"scheme,omitempty"`
-	Duration        string                `json:"duration,omitempty"`
-	Tags            []string              `json:"tags,omitempty"`
-	Metadata        map[string]string     `json:"metadata,omitempty"`
-	BackendUsername config.ConfigSource   `json:"backend_username,omitempty"`
-	BackendPassword config.ConfigSource   `json:"backend_password,omitempty"`
-	BackendDatabase string                `json:"backend_database,omitempty"`
-	Whitelist       []string              `json:"whitelist,omitempty"`
+	Name            string              `json:"name"`
+	Type            string              `json:"type"`
+	Host            string              `json:"host,omitempty"`
+	Port            int                 `json:"port,omitempty"`
+	Scheme          string              `json:"scheme,omitempty"`
+	Duration        string              `json:"duration,omitempty"`
+	Tags            []string            `json:"tags,omitempty"`
+	Metadata        map[string]string   `json:"metadata,omitempty"`
+	BackendUsername config.ConfigSource `json:"backend_username,omitempty"`
+	BackendPassword config.ConfigSource `json:"backend_password,omitempty"`
+	BackendDatabase string              `json:"backend_database,omitempty"`
+	Whitelist       []string            `json:"whitelist,omitempty"`
+	TLS             *config.TLSConfig   `json:"tls,omitempty"`
+	// K8s Services specific fields
+	K8sExcludeNamespaces []string                `json:"k8s_exclude_namespaces,omitempty"`
+	K8sIncludeNamespaces []string                `json:"k8s_include_namespaces,omitempty"`
+	K8sIgnoreServices    []string                `json:"k8s_ignore_services,omitempty"`
+	K8sPortMappings      []config.K8sPortMapping `json:"k8s_port_mappings,omitempty"`
 }
 
 // toConnectionResponse converts ConnectionConfig to ConnectionResponse with duration as string
 func toConnectionResponse(conn config.ConnectionConfig) ConnectionResponse {
 	resp := ConnectionResponse{
-		Name:            conn.Name,
-		Type:            conn.Type,
-		Host:            conn.Host,
-		Port:            conn.Port,
-		Scheme:          conn.Scheme,
-		Tags:            conn.Tags,
-		Metadata:        conn.Metadata,
-		BackendUsername: sanitizeConfigSource(conn.BackendUsername),
-		BackendPassword: sanitizeConfigSource(conn.BackendPassword),
-		BackendDatabase: conn.BackendDatabase,
-		Whitelist:       conn.Whitelist,
+		Name:                 conn.Name,
+		Type:                 conn.Type,
+		Host:                 conn.Host,
+		Port:                 conn.Port,
+		Scheme:               conn.Scheme,
+		Tags:                 conn.Tags,
+		Metadata:             conn.Metadata,
+		BackendUsername:      sanitizeConfigSource(conn.BackendUsername),
+		BackendPassword:      sanitizeConfigSource(conn.BackendPassword),
+		BackendDatabase:      conn.BackendDatabase,
+		Whitelist:            conn.Whitelist,
+		TLS:                  conn.TLS,
+		K8sExcludeNamespaces: conn.K8sExcludeNamespaces,
+		K8sIncludeNamespaces: conn.K8sIncludeNamespaces,
+		K8sIgnoreServices:    conn.K8sIgnoreServices,
+		K8sPortMappings:      conn.K8sPortMappings,
 	}
 
 	// Convert duration to string format
@@ -223,8 +235,14 @@ func (s *Server) handleCreateConnection(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Validate connection
-	if conn.Name == "" || conn.Type == "" || conn.Host == "" || conn.Port == 0 {
-		respondError(w, http.StatusBadRequest, "Missing required fields: name, type, host, port")
+	if conn.Name == "" || conn.Type == "" {
+		respondError(w, http.StatusBadRequest, "Missing required fields: name, type")
+		return
+	}
+
+	// For k8s_services, host and port are not required
+	if conn.Type != "k8s_services" && (conn.Host == "" || conn.Port == 0) {
+		respondError(w, http.StatusBadRequest, "Missing required fields: host, port (not required for k8s_services type)")
 		return
 	}
 
@@ -901,14 +919,16 @@ func (s *Server) handleGetSystemStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get active connections from connection manager
 	activeConnections := s.connMgr.GetActiveConnections()
+	activeConnectionsList := s.connMgr.GetActiveConnectionsList()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":                 "running",
-		"active_connections":     activeConnections,
-		"configured_connections": len(cfg.Connections),
-		"policies":               len(cfg.Policies),
-		"users":                  len(cfg.Auth.Users),
-		"uptime":                 time.Since(time.Now()).String(), // Placeholder
+		"status":                      "running",
+		"active_connections":          activeConnections,
+		"active_connections_list":     activeConnectionsList,
+		"configured_connections":      len(cfg.Connections),
+		"policies":                    len(cfg.Policies),
+		"users":                       len(cfg.Auth.Users),
+		"uptime":                      time.Since(time.Now()).String(), // Placeholder
 	})
 }
 
@@ -967,6 +987,10 @@ func sanitizeConfig(cfg *config.Config) map[string]interface{} {
 		}
 		if conn.BackendDatabase != "" {
 			connMap["backend_database"] = conn.BackendDatabase
+		}
+		// Add TLS configuration
+		if conn.TLS != nil {
+			connMap["tls"] = conn.TLS
 		}
 		connections = append(connections, connMap)
 	}
@@ -1143,11 +1167,12 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 	if s.approvalMgr != nil {
 		var requiresApproval bool
 		var approvalTimeout time.Duration
+		userRoles := []string{testData.Role}
 
 		if queryType == "http" && testData.Method != "" && testData.Path != "" {
-			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Method, testData.Path, connection.Tags)
+			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Method, testData.Path, connection.Tags, userRoles)
 		} else if queryType == "database" && testData.Query != "" {
-			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Query, "", connection.Tags)
+			requiresApproval, approvalTimeout = s.approvalMgr.RequiresApproval(testData.Query, "", connection.Tags, userRoles)
 		}
 
 		result["requiresApproval"] = requiresApproval
@@ -1163,10 +1188,10 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 
 // ApprovalConfigResponse is the response for approval configuration
 type ApprovalConfigResponse struct {
-	Enabled  bool                        `json:"enabled"`
-	Patterns []ApprovalPatternResponse   `json:"patterns"`
-	Webhook  *WebhookApprovalResponse    `json:"webhook,omitempty"`
-	Slack    *SlackApprovalResponse      `json:"slack,omitempty"`
+	Enabled  bool                      `json:"enabled"`
+	Patterns []ApprovalPatternResponse `json:"patterns"`
+	Webhook  *WebhookApprovalResponse  `json:"webhook,omitempty"`
+	Slack    *SlackApprovalResponse    `json:"slack,omitempty"`
 }
 
 // WebhookApprovalResponse is the sanitized response for webhook approval config
@@ -1185,6 +1210,8 @@ type ApprovalPatternResponse struct {
 	Pattern        string   `json:"pattern"`
 	Tags           []string `json:"tags,omitempty"`
 	TagMatch       string   `json:"tag_match,omitempty"`
+	Roles          []string `json:"roles,omitempty"`
+	RoleMatch      string   `json:"role_match,omitempty"`
 	TimeoutSeconds int      `json:"timeout_seconds"`
 }
 
@@ -1199,6 +1226,8 @@ func (s *Server) handleGetApprovalConfig(w http.ResponseWriter, r *http.Request)
 			Pattern:        p.Pattern,
 			Tags:           p.Tags,
 			TagMatch:       p.TagMatch,
+			Roles:          p.Roles,
+			RoleMatch:      p.RoleMatch,
 			TimeoutSeconds: p.TimeoutSeconds,
 		}
 	}
@@ -1292,6 +1321,8 @@ func (s *Server) handleCreateApprovalPattern(w http.ResponseWriter, r *http.Requ
 		Pattern:        pattern.Pattern,
 		Tags:           pattern.Tags,
 		TagMatch:       pattern.TagMatch,
+		Roles:          pattern.Roles,
+		RoleMatch:      pattern.RoleMatch,
 		TimeoutSeconds: pattern.TimeoutSeconds,
 	}
 
@@ -1350,6 +1381,8 @@ func (s *Server) handleUpdateApprovalPattern(w http.ResponseWriter, r *http.Requ
 		Pattern:        pattern.Pattern,
 		Tags:           pattern.Tags,
 		TagMatch:       pattern.TagMatch,
+		Roles:          pattern.Roles,
+		RoleMatch:      pattern.RoleMatch,
 		TimeoutSeconds: pattern.TimeoutSeconds,
 	}
 
@@ -1495,5 +1528,62 @@ func (s *Server) handleGetConfigErrors(w http.ResponseWriter, r *http.Request) {
 			"connections": connectionErrors,
 			"global":      globalErrors,
 		},
+	})
+}
+
+// K8sResourcesResponse represents available Kubernetes resources
+type K8sResourcesResponse struct {
+	ConfigMaps []string `json:"configmaps"`
+	Secrets    []string `json:"secrets"`
+	Namespace  string   `json:"namespace"`
+}
+
+// handleListK8sResources returns available ConfigMaps and Secrets from the app's namespace
+func (s *Server) handleListK8sResources(w http.ResponseWriter, r *http.Request) {
+	// Determine the namespace to list from
+	// Priority: 1) K8S_NAMESPACE env var, 2) configured kubernetes.discovery.configuration.namespaces, 3) default "port-authorizer"
+	namespace := os.Getenv("K8S_NAMESPACE")
+
+	if namespace == "" {
+		// Check configured namespaces
+		cfg := s.GetConfig()
+		if cfg.Kubernetes != nil && len(cfg.Kubernetes.Discovery.Configuration.Namespaces) > 0 {
+			namespace = cfg.Kubernetes.Discovery.Configuration.Namespaces[0] // Use first configured namespace
+		} else {
+			namespace = "port-authorizer" // Default namespace
+		}
+	}
+
+	// Use the server's existing resolver (already configured with K8s client)
+	if s.resolver == nil {
+		// No resolver available (not in K8s environment)
+		respondJSON(w, http.StatusOK, K8sResourcesResponse{
+			ConfigMaps: []string{},
+			Secrets:    []string{},
+			Namespace:  "",
+		})
+		return
+	}
+
+	ctx := r.Context()
+
+	// List ConfigMaps from the specific namespace
+	configMaps, err := s.resolver.ListConfigMapsInNamespace(ctx, namespace)
+	if err != nil {
+		log.Printf("Failed to list ConfigMaps in namespace %s: %v", namespace, err)
+		configMaps = []string{}
+	}
+
+	// List Secrets from the specific namespace
+	secrets, err := s.resolver.ListSecretsInNamespace(ctx, namespace)
+	if err != nil {
+		log.Printf("Failed to list Secrets in namespace %s: %v", namespace, err)
+		secrets = []string{}
+	}
+
+	respondJSON(w, http.StatusOK, K8sResourcesResponse{
+		ConfigMaps: configMaps,
+		Secrets:    secrets,
+		Namespace:  namespace,
 	})
 }

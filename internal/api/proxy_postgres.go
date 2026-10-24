@@ -78,6 +78,7 @@ func (s *Server) handlePostgresProxy(w http.ResponseWriter, r *http.Request) {
 		s.config.Logging.AuditLogPath,
 		username,
 		connectionID,
+		roles,
 		s.config,
 		whitelist,
 		s.resolver,

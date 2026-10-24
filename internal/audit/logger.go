@@ -19,15 +19,25 @@ var (
 	maxMemoryBytes  int64 = 1 * 1024 * 1024 // Default: 1MB
 	currentMemBytes int64 = 0
 	memoryEnabled   bool  = true
+	globalEnvironment string // Global environment for all logs
 )
 
 // LogEntry represents an audit log entry
 type LogEntry struct {
-	Timestamp time.Time              `json:"timestamp"`
-	Username  string                 `json:"username"`
-	Action    string                 `json:"action"`
-	Resource  string                 `json:"resource,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Level       string                 `json:"level"`
+	Timestamp   time.Time              `json:"timestamp"`
+	Username    string                 `json:"username"`
+	Action      string                 `json:"action"`
+	Resource    string                 `json:"resource,omitempty"`
+	Environment string                 `json:"environment,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SetEnvironment sets the global environment for all audit logs
+func SetEnvironment(environment string) {
+	mu.Lock()
+	defer mu.Unlock()
+	globalEnvironment = environment
 }
 
 // ConfigureMemoryBuffer sets the maximum memory for the in-memory audit buffer
@@ -66,7 +76,7 @@ func GetMemoryStats() (currentMB float64, maxMB float64, entryCount int, enabled
 		memoryEnabled
 }
 
-// Log writes an audit log entry
+// Log writes an audit log entry using the global environment
 func Log(logPath, username, action, resource string, metadata map[string]interface{}) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -87,13 +97,15 @@ func Log(logPath, username, action, resource string, metadata map[string]interfa
 		logFiles[logPath] = logFile
 	}
 
-	// Create log entry
+	// Create log entry with global environment
 	entry := LogEntry{
-		Timestamp: time.Now(),
-		Username:  username,
-		Action:    action,
-		Resource:  resource,
-		Metadata:  metadata,
+		Level:       "audit",
+		Timestamp:   time.Now(),
+		Username:    username,
+		Action:      action,
+		Resource:    resource,
+		Environment: globalEnvironment,
+		Metadata:    metadata,
 	}
 
 	// Marshal to JSON

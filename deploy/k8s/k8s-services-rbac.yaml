@@ -1,0 +1,40 @@
+---
+# ClusterRole with minimal permissions for service discovery
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: port-authorizing-discovery
+  labels:
+    app: port-authorizing
+rules:
+  # List and get namespaces (to discover which namespaces exist)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list", "get"]
+  
+  # List and get services across all namespaces
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["list", "get"]
+  
+  # List and get endpoints (to resolve service IPs)
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["list", "get"]
+
+---
+# Bind the ClusterRole to the ServiceAccount
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: port-authorizing-discovery
+  labels:
+    app: port-authorizing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: port-authorizing-discovery
+subjects:
+  - kind: ServiceAccount
+    name: devops-dev-port-authorizer-default
+    namespace: port-authorizer

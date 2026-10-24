@@ -15,6 +15,7 @@ import (
 type Connection struct {
 	ID        string
 	Username  string
+	Roles     []string
 	Config    *config.ConnectionConfig
 	Proxy     Protocol
 	CreatedAt time.Time
@@ -75,7 +76,7 @@ func NewConnectionManager(maxDuration time.Duration) *ConnectionManager {
 }
 
 // CreateConnection creates a new proxy connection
-func (cm *ConnectionManager) CreateConnection(username string, connConfig *config.ConnectionConfig, duration time.Duration, whitelist []string, auditLogPath string, approvalMgr *approval.Manager) (string, time.Time, error) {
+func (cm *ConnectionManager) CreateConnection(username string, roles []string, connConfig *config.ConnectionConfig, duration time.Duration, whitelist []string, auditLogPath string, approvalMgr *approval.Manager, apiConfig *config.Config) (string, time.Time, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -83,14 +84,14 @@ func (cm *ConnectionManager) CreateConnection(username string, connConfig *confi
 	connectionID := uuid.New().String()
 
 	// Create protocol-specific proxy
-	// Note: postgres doesn't use the Protocol interface, it has a dedicated handler
+	// Note: postgres and redis don't use the Protocol interface, they have dedicated handlers
 	var proxy Protocol
 	var err error
 
-	if connConfig.Type != "postgres" {
+	if connConfig.Type != "postgres" && connConfig.Type != "redis" && connConfig.Type != "k8s_services" {
 		if connConfig.Type == "http" || connConfig.Type == "https" {
 			// Create HTTP proxy with whitelist support
-			httpProxy := NewHTTPProxyWithWhitelist(connConfig, whitelist, auditLogPath, username, connectionID)
+			httpProxy := NewHTTPProxyWithWhitelist(connConfig, whitelist, auditLogPath, username, connectionID, roles, apiConfig)
 
 			// Set approval manager if provided
 			if approvalMgr != nil {
@@ -106,13 +107,14 @@ func (cm *ConnectionManager) CreateConnection(username string, connConfig *confi
 			}
 		}
 	}
-	// For postgres, Proxy will be nil - it's handled by handlePostgresProxy
+	// For postgres, redis, and k8s_services, Proxy will be nil - they're handled by dedicated WebSocket handlers
 
 	expiresAt := time.Now().Add(duration)
 
 	conn := &Connection{
 		ID:        connectionID,
 		Username:  username,
+		Roles:     roles,
 		Config:    connConfig,
 		Proxy:     proxy,
 		CreatedAt: time.Now(),
@@ -202,4 +204,39 @@ func (cm *ConnectionManager) GetActiveConnections() int {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 	return len(cm.connections)
+}
+
+// ActiveConnectionInfo represents info about an active connection
+type ActiveConnectionInfo struct {
+	ID            string    `json:"id"`
+	Username      string    `json:"username"`
+	ConnectionName string   `json:"connection_name"`
+	ConnectionType string   `json:"connection_type"`
+	CreatedAt     time.Time `json:"created_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	ActiveStreams int       `json:"active_streams"`
+}
+
+// GetActiveConnectionsList returns detailed list of active connections
+func (cm *ConnectionManager) GetActiveConnectionsList() []ActiveConnectionInfo {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	list := make([]ActiveConnectionInfo, 0, len(cm.connections))
+	for _, conn := range cm.connections {
+		conn.streamsMu.Lock()
+		streamCount := len(conn.activeStreams)
+		conn.streamsMu.Unlock()
+
+		list = append(list, ActiveConnectionInfo{
+			ID:             conn.ID,
+			Username:       conn.Username,
+			ConnectionName: conn.Config.Name,
+			ConnectionType: conn.Config.Type,
+			CreatedAt:      conn.CreatedAt,
+			ExpiresAt:      conn.ExpiresAt,
+			ActiveStreams:  streamCount,
+		})
+	}
+	return list
 }

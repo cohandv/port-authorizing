@@ -3,6 +3,8 @@ server:
   port: 8080
   max_connection_duration: 2h
   base_url: "http://localhost:8080"  # Base URL for approval callbacks
+  cache:
+    ttl: 2m  # How long to cache ConfigMap/Secret values (default: 2m)
 
 # Storage configuration (optional - defaults to file)
 storage:
@@ -55,6 +57,7 @@ auth:
         redirect_url: "http://localhost:8080/api/auth/oidc/callback"
         roles_claim: "roles"
         username_claim: "preferred_username"
+        audience: "audience"
       # Alternative: Read client_secret from Kubernetes Secret
       # client_secret:
       #   type: secret
@@ -171,6 +174,136 @@ connections:
       description: "Production PostgreSQL database"
       environment: "production"
 
+  # PostgreSQL on AWS RDS
+  # TLS to the backend is automatic: port-authorizing always tries the
+  # Postgres SSLRequest negotiation first and falls back to plain TCP if the
+  # backend doesn't support it or the handshake fails - no config needed.
+  # The official images already trust RDS's CA bundle, so verification just
+  # works. Add a `tls:` block only to override defaults or opt out entirely.
+  - name: postgres-rds
+    type: postgres
+    host: prod-db.abc123xyz.us-east-1.rds.amazonaws.com
+    port: 5432
+    duration: 10m
+    tags:
+      - env:production
+      - type:database
+      - team:backend
+    # tls:
+    #   enabled: false             # Force plain TCP, skip the TLS attempt entirely
+    #   server_name: "..."         # Override the name verified against the cert (defaults to host)
+    #   ca_cert: "/path/to/ca.pem" # Custom CA bundle instead of the system trust store
+    backend_username:
+      type: secret
+      ref: postgres-rds-credentials
+      ref_name: username
+    backend_password:
+      type: secret
+      ref: postgres-rds-credentials
+      ref_name: password
+    backend_database: "app"
+    metadata:
+      description: "Production PostgreSQL on AWS RDS"
+      environment: "production"
+
+  # Redis test cache (Docker)
+  - name: redis-test
+    type: redis
+    host: localhost
+    port: 6379
+    duration: 5m
+    tags:
+      - env:test
+      - type:cache
+      - team:backend
+    # No authentication for local Redis
+    # backend_password: ""  # Leave empty or omit for no auth
+    metadata:
+      description: "Test Redis cache (Docker, no auth)"
+      database: "0"
+
+  # Redis staging cache (with legacy password-only authentication)
+  # Use this for Redis < 6.0 or when only password authentication is needed
+  - name: redis-staging
+    type: redis
+    host: staging-redis.example.com
+    port: 6379
+    duration: 15m
+    tags:
+      - env:staging
+      - type:cache
+      - team:backend
+    # Legacy authentication (Redis < 6.0): password only
+    # Read password from Kubernetes Secret
+    backend_password:
+      type: secret
+      ref: redis-staging-credentials
+      ref_name: password
+      value: "fallback-password"  # Used if Secret not found
+    metadata:
+      description: "Staging Redis cache (legacy auth)"
+      environment: "staging"
+
+  # Redis production cache with ACL authentication (Redis 6.0+)
+  # RECOMMENDED: Use Redis 6.0+ ACL with username + password for better security
+  - name: redis-prod
+    type: redis
+    host: prod-redis.example.com
+    port: 6379
+    duration: 10m
+    tags:
+      - env:production
+      - type:cache
+      - team:backend
+      - critical:true
+    # ACL authentication (Redis 6.0+): username + password
+    # Provides better security and per-user access control
+    backend_username:
+      type: secret
+      ref: redis-prod-credentials
+      ref_name: username
+    backend_password:
+      type: secret
+      ref: redis-prod-credentials
+      ref_name: password
+    # Note: If Redis < 6.0, the proxy will automatically fall back to password-only auth
+    metadata:
+      description: "Production Redis cache (ACL auth)"
+      environment: "production"
+      redis_version: "6.0+"
+
+  # Redis production cache with TLS (secure connection)
+  # Use this when Redis is configured with TLS/SSL
+  - name: redis-prod-tls
+    type: redis
+    host: redis-tls.example.com
+    port: 6380
+    duration: 10m
+    tags:
+      - env:production
+      - type:cache
+      - team:backend
+      - critical:true
+    # TLS configuration (nested structure)
+    tls:
+      enabled: true                        # Enable TLS/SSL
+      skip_verify: false                   # Verify server certificate (recommended)
+      server_name: "redis.example.com"    # Server name for certificate validation
+      # ca_cert: "/path/to/ca.crt"        # Optional: Custom CA certificate
+      # client_cert: "/path/to/client.crt"  # Optional: Client certificate for mutual TLS
+      # client_key: "/path/to/client.key"   # Optional: Client key for mutual TLS
+    # ACL authentication over TLS
+    backend_username: produser
+    backend_password:
+      type: secret
+      ref: redis-prod-tls-credentials
+      ref_name: password
+    metadata:
+      description: "Production Redis with TLS encryption"
+      environment: "production"
+      redis_version: "6.0+"
+      encryption: "TLS"
+
   # Nginx test server (Docker)
   - name: nginx-test
     type: http
@@ -212,19 +345,6 @@ connections:
       - critical:true
     metadata:
       description: "Internal REST API (Production)"
-
-  # Redis cache
-  - name: redis-cache
-    type: tcp
-    host: redis.example.com
-    port: 6379
-    duration: 5m
-    tags:
-      - env:production
-      - type:cache
-      - team:platform
-    metadata:
-      description: "Redis cache server"
 
 # Role-based access policies
 # Policies define which roles can access which connections (via tags) and what they can do (whitelist)
@@ -273,8 +393,16 @@ policies:
       - "^POST /api/.*"  # Allow POST to API endpoints
       - "^PUT /api/users/[0-9]+/profile$"  # Allow updating user profiles
       - "^PATCH /api/.*"  # Allow PATCH requests
+      # Redis whitelists (for redis connections)
+      - "^GET .*"  # Allow GET commands
+      - "^SET .*"  # Allow SET commands
+      - "^DEL .*"  # Allow DEL commands
+      - "^HGET .*"  # Allow HGET commands
+      - "^HSET .*"  # Allow HSET commands
+      - "^LPUSH .*"  # Allow LPUSH commands
+      - "^LRANGE .*"  # Allow LRANGE commands
     metadata:
-      description: "Developers have limited access to staging (SELECT, specific INSERTs for DBs; GET, POST, PUT, PATCH for APIs)"
+      description: "Developers have limited access to staging (SELECT, specific INSERTs for DBs; GET, POST, PUT, PATCH for APIs; common Redis commands)"
 
   # Developer policy - read-only access to production
   - name: developer-prod-readonly
@@ -291,8 +419,15 @@ policies:
       - "^GET .*"  # Allow all GET requests
       - "^HEAD .*"  # Allow HEAD requests
       - "^OPTIONS .*"  # Allow OPTIONS requests (CORS preflight)
+      # Redis whitelists (read-only)
+      - "^GET .*"  # Allow GET commands
+      - "^HGET .*"  # Allow HGET commands
+      - "^HGETALL .*"  # Allow HGETALL commands
+      - "^KEYS .*"  # Allow KEYS (use with caution in production)
+      - "^TTL .*"  # Allow TTL commands
+      - "^EXISTS .*"  # Allow EXISTS commands
     metadata:
-      description: "Developers have read-only access to production (SELECT/EXPLAIN for DBs; GET/HEAD/OPTIONS for APIs)"
+      description: "Developers have read-only access to production (SELECT/EXPLAIN for DBs; GET/HEAD/OPTIONS for APIs; read-only Redis commands)"
 
   # QA policy - full access to test, read-only to staging
   - name: qa-test-full
@@ -340,13 +475,19 @@ security:
   enable_llm_analysis: false
   llm_provider: "openai"
   llm_api_key: ""
-  config_source_cache_ttl: 1m  # How long to cache ConfigMap/Secret values (default: 1m)
 
 logging:
 # audit_log_path: "stdout"
   audit_log_path: "audit.log"
   log_level: "info"
   audit_memory_mb: 1  # Max memory for in-memory audit buffer (0 to disable, default 1MB)
+
+# Kubernetes configuration
+kubernetes:
+  discovery:
+    configuration:
+      namespaces:
+        - port-authorizer
 
 # Approval workflow configuration
 # Requires human approval for certain commands before execution

@@ -36,6 +36,53 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Redis without authentication (for testing basic Redis proxying)
+  redis-noauth:
+    image: redis:7-alpine
+    container_name: port-auth-redis-noauth
+    ports:
+      - "6379:6379"
+    command: redis-server --loglevel verbose
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis with legacy authentication (for testing Redis < 6.0 password-only auth)
+  redis-auth:
+    image: redis:7-alpine
+    container_name: port-auth-redis-auth
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass redispass123 --loglevel verbose
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis 6.0+ with ACL authentication (for testing username+password auth)
+  redis-acl:
+    image: redis:7-alpine
+    container_name: port-auth-redis-acl
+    ports:
+      - "6381:6379"
+    volumes:
+      - ./docker/redis-users.acl:/etc/redis/users.acl:ro
+    command: >
+      redis-server 
+      --aclfile /etc/redis/users.acl
+      --loglevel verbose
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "aclpass123", "--user", "acluser", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # Port-Authorizing API Server
   api:
     build:
@@ -45,18 +92,39 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./docker/config.yaml:/app/config.yaml:ro
+      - ./docker/config.yaml:/app/config.yaml
       - ./data:/app/data
       - api_logs:/app/logs
+      - ~/.kube/config:/home/portauth/.kube/config:ro  # Mount local kubeconfig for k8s_services
+      - ~/.aws:/home/portauth/.aws:ro  # Mount AWS credentials for EKS authentication
     environment:
       - PORT=8080
+      - KUBECONFIG=/home/portauth/.kube/config
+      - AWS_CONFIG_FILE=/home/portauth/.aws/config
+      - AWS_SHARED_CREDENTIALS_FILE=/home/portauth/.aws/credentials
     depends_on:
       postgres:
+        condition: service_healthy
+      redis-noauth:
+        condition: service_healthy
+      redis-auth:
+        condition: service_healthy
+      redis-acl:
         condition: service_healthy
       keycloak:
         condition: service_started  # Changed from healthy to started (keycloak takes time)
       mock-approval:
         condition: service_started
+      redis-noauth:
+        condition: service_healthy
+      redis-auth:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
       interval: 5s
@@ -158,10 +226,123 @@ services:
     depends_on:
       - openldap
 
+  # Redis without authentication
+  redis-noauth:
+    image: redis:alpine
+    container_name: port-auth-redis-noauth
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis with authentication
+  redis-auth:
+    image: redis:alpine
+    container_name: port-auth-redis-auth
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass redispass --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Kafka Node 1
+  kafka-1:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: port-auth-kafka-1
+    ports:
+      - "19092:19092"  # External port for clients
+      - "9093:9093"    # Controller port
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_1_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:19092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Kafka Node 2
+  kafka-2:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: port-auth-kafka-2
+    ports:
+      - "19093:19093"  # External port for clients
+      - "9094:9093"    # Controller port (different from node 1)
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19093,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_2_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:19093"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Kafka Node 3
+  kafka-3:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: port-auth-kafka-3
+    ports:
+      - "19094:19094"  # External port for clients
+      - "9095:9093"    # Controller port (different from nodes 1 and 2)
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:19094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:19094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_3_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:19094"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
 volumes:
   postgres_data:
   keycloak_data:
   ldap_data:
   ldap_config:
   api_logs:
+  kafka_1_data:
+  kafka_2_data:
+  kafka_3_data:
 

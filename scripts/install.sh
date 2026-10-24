@@ -1,6 +1,6 @@
 #!/bin/bash
 # Port Authorizing installation script
-# Usage: curl -fsSL https://raw.githubusercontent.com/davidcohan/port-authorizing/main/scripts/install.sh | bash
+# Usage: GITHUB_TOKEN=<<YOUR_TOKEN>> curl -fsSL https://raw.githubusercontent.com/cohandv/port-authorizing/refs/heads/main/scripts/install.sh | bash
 
 set -e
 
@@ -49,11 +49,25 @@ esac
 echo "📍 Detected: $OS-$ARCH"
 echo ""
 
-# Get latest release version
-echo "🔍 Fetching latest release..."
-LATEST_VERSION=$(curl -s https://api.github.com/repos/cohandv/port-authorizing/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+# Check for jq
+if ! command -v jq >/dev/null 2>&1; then
+  echo -e "${RED}❌ jq is required but not installed${NC}"
+  echo ""
+  echo "Please install jq:"
+  echo "  • macOS: brew install jq"
+  echo "  • Ubuntu/Debian: sudo apt-get install jq"
+  echo "  • CentOS/RHEL: sudo yum install jq"
+  echo ""
+  exit 1
+fi
 
-if [ -z "$LATEST_VERSION" ]; then
+# Get latest release info
+echo "🔍 Fetching latest release..."
+RELEASE_JSON=$(curl -s -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/cohandv/port-authorizing/releases/latest)
+
+LATEST_VERSION=$(echo "$RELEASE_JSON" | jq -r '.tag_name')
+
+if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
   echo -e "${RED}❌ Failed to fetch latest version${NC}"
   echo ""
   echo "Possible reasons: "
@@ -66,10 +80,7 @@ if [ -z "$LATEST_VERSION" ]; then
   echo "1. Manual download from GitHub:"
   echo "   https://github.com/cohandv/port-authorizing/releases"
   echo ""
-  echo "2. Use Docker:"
-  echo "   docker pull cohandv/port-authorizing:latest"
-  echo ""
-  echo "3. Build from source:"
+  echo "2. Build from source:"
   echo "   git clone https://github.com/cohandv/port-authorizing.git"
   echo "   cd port-authorizing && make build"
   echo ""
@@ -79,14 +90,34 @@ fi
 echo -e "${GREEN}✓ Latest version: $LATEST_VERSION${NC}"
 echo ""
 
-# Construct download URL
+# Determine binary name
 BINARY_NAME="port-authorizing-${OS}-${ARCH}"
 if [ "$OS" = "windows" ]; then
   BINARY_NAME="${BINARY_NAME}.exe"
 fi
+CHECKSUM_NAME="${BINARY_NAME}.sha256"
 
-DOWNLOAD_URL="https://github.com/cohandv/port-authorizing/releases/download/${LATEST_VERSION}/${BINARY_NAME}"
-CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
+# Extract asset IDs from release info
+echo "🔍 Finding asset IDs..."
+BINARY_ASSET_ID=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$BINARY_NAME\") | .id")
+CHECKSUM_ASSET_ID=$(echo "$RELEASE_JSON" | jq -r ".assets[] | select(.name == \"$CHECKSUM_NAME\") | .id")
+
+if [ -z "$BINARY_ASSET_ID" ] || [ "$BINARY_ASSET_ID" = "null" ]; then
+  echo -e "${RED}❌ Failed to find asset ID for $BINARY_NAME${NC}"
+  exit 1
+fi
+
+echo -e "${GREEN}✓ Found binary asset ID: $BINARY_ASSET_ID${NC}"
+if [ -n "$CHECKSUM_ASSET_ID" ] && [ "$CHECKSUM_ASSET_ID" != "null" ]; then
+  echo -e "${GREEN}✓ Found checksum asset ID: $CHECKSUM_ASSET_ID${NC}"
+fi
+echo ""
+
+# Construct download URLs using asset IDs
+DOWNLOAD_URL="https://api.github.com/repos/cohandv/port-authorizing/releases/assets/${BINARY_ASSET_ID}"
+if [ -n "$CHECKSUM_ASSET_ID" ] && [ "$CHECKSUM_ASSET_ID" != "null" ]; then
+  CHECKSUM_URL="https://api.github.com/repos/cohandv/port-authorizing/releases/assets/${CHECKSUM_ASSET_ID}"
+fi
 
 # Create temp directory
 TMP_DIR=$(mktemp -d)
@@ -94,7 +125,7 @@ cd "$TMP_DIR"
 
 # Download binary
 echo "📥 Downloading $BINARY_NAME..."
-if ! curl -fSL "$DOWNLOAD_URL" -o "$BINARY_NAME"; then
+if ! curl -fSL -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$DOWNLOAD_URL" -o "$BINARY_NAME"; then
   echo -e "${RED}❌ Failed to download binary${NC}"
   rm -rf "$TMP_DIR"
   exit 1
@@ -102,9 +133,7 @@ fi
 
 # Download checksum
 echo "🔐 Downloading checksum..."
-if ! curl -fSL "$CHECKSUM_URL" -o "${BINARY_NAME}.sha256"; then
-  echo -e "${YELLOW}⚠️  Failed to download checksum (continuing anyway)${NC}"
-else
+if [ -n "$CHECKSUM_URL" ] && curl -fSL -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/octet-stream" "$CHECKSUM_URL" -o "${BINARY_NAME}.sha256"; then
   # Verify checksum
   echo "✅ Verifying checksum..."
   if command -v sha256sum >/dev/null 2>&1; then
@@ -122,6 +151,8 @@ else
   else
     echo -e "${YELLOW}⚠️  sha256sum not found, skipping verification${NC}"
   fi
+else
+  echo -e "${YELLOW}⚠️  Checksum not available or failed to download (continuing anyway)${NC}"
 fi
 
 # Make executable

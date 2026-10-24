@@ -35,7 +35,10 @@ func TestRunLogin_Success(t *testing.T) {
 
 	// Create root command with flags
 	rootCmd := &cobra.Command{}
-	rootCmd.PersistentFlags().String("api-url", server.URL, "")
+	rootCmd.PersistentFlags().String("api-url", "", "")
+	_ = rootCmd.PersistentFlags().Set("api-url", server.URL)
+	rootCmd.PersistentFlags().StringP("context", "c", "", "")
+	_ = rootCmd.PersistentFlags().Set("context", "test")
 
 	// Create login command
 	loginCmd := &cobra.Command{
@@ -86,7 +89,10 @@ func TestRunLogin_InvalidCredentials(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
-	rootCmd.PersistentFlags().String("api-url", server.URL, "")
+	rootCmd.PersistentFlags().String("api-url", "", "")
+	_ = rootCmd.PersistentFlags().Set("api-url", server.URL)
+	rootCmd.PersistentFlags().StringP("context", "c", "", "")
+	_ = rootCmd.PersistentFlags().Set("context", "test")
 
 	loginCmd := &cobra.Command{
 		Use:  "login",
@@ -111,8 +117,15 @@ func TestRunLogin_InvalidCredentials(t *testing.T) {
 
 func TestRunLogin_MissingCredentials(t *testing.T) {
 	// Test will try to use OIDC which won't work in tests, but we can test missing creds error
+	tmpDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", tmpDir)
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
 	rootCmd := &cobra.Command{}
 	rootCmd.PersistentFlags().String("api-url", "http://localhost:8080", "")
+	rootCmd.PersistentFlags().StringP("context", "c", "", "")
+	_ = rootCmd.PersistentFlags().Set("context", "test")
 
 	loginCmd := &cobra.Command{
 		Use:  "login",
@@ -318,7 +331,10 @@ func BenchmarkRunLogin(b *testing.B) {
 	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	rootCmd := &cobra.Command{}
-	rootCmd.PersistentFlags().String("api-url", server.URL, "")
+	rootCmd.PersistentFlags().String("api-url", "", "")
+	_ = rootCmd.PersistentFlags().Set("api-url", server.URL)
+	rootCmd.PersistentFlags().StringP("context", "c", "", "")
+	_ = rootCmd.PersistentFlags().Set("context", "test")
 
 	loginCmd := &cobra.Command{
 		Use:  "login",
@@ -368,5 +384,56 @@ func BenchmarkRunList(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = listCmd.RunE(listCmd, []string{})
+	}
+}
+
+func TestResolveAPIURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		flagValue   string // "" means the flag is never Set (not "Changed")
+		contextName string
+		savedAPIURL string
+		want        string
+	}{
+		{
+			name:        "no flag, no saved URL uses templated default",
+			contextName: "dev",
+			want:        "https://fwd.dev.cohandv.io",
+		},
+		{
+			name:        "no flag, saved URL is reused",
+			contextName: "dev",
+			savedAPIURL: "https://saved.example.com",
+			want:        "https://saved.example.com",
+		},
+		{
+			name:        "flag with {env} is interpolated",
+			flagValue:   "https://api.{env}.internal.corp",
+			contextName: "staging",
+			savedAPIURL: "https://saved.example.com",
+			want:        "https://api.staging.internal.corp",
+		},
+		{
+			name:        "flag without {env} is used literally",
+			flagValue:   "http://localhost:8080",
+			contextName: "dev",
+			savedAPIURL: "https://saved.example.com",
+			want:        "http://localhost:8080",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.PersistentFlags().String("api-url", "", "")
+			if tt.flagValue != "" {
+				_ = cmd.PersistentFlags().Set("api-url", tt.flagValue)
+			}
+
+			got := resolveAPIURL(cmd, tt.contextName, tt.savedAPIURL)
+			if got != tt.want {
+				t.Errorf("resolveAPIURL() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

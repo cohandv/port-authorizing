@@ -5,6 +5,8 @@ server:
     port: 8081
     max_connection_duration: 2h0m0s
     base_url: http://localhost:8080
+    cache:
+        ttl: 2m
 auth:
     jwt_secret: your-secret-key-change-this-in-production
     token_expiry: 30m0s
@@ -125,7 +127,14 @@ policies:
 security:
     enable_llm_analysis: false
     llm_provider: openai
-    config_source_cache_ttl: 1m  # How long to cache ConfigMap/Secret values (default: 1m)
+
+# Kubernetes configuration
+kubernetes:
+  discovery:
+    configuration:
+      namespaces:
+        - port-authorizer
+
 logging:
     audit_log_path: audit.log
     log_level: info

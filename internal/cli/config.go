@@ -5,7 +5,42 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/spf13/cobra"
 )
+
+// resolveContext returns the context to use for this invocation: the context named by
+// an explicit --context flag if passed, otherwise the current context. Never changes
+// what's persisted as current — that's what "context use" is for.
+func resolveContext(cmd *cobra.Command) (*Context, error) {
+	if cmd.Root().PersistentFlags().Changed("context") {
+		name, _ := cmd.Root().PersistentFlags().GetString("context")
+		return GetContext(name)
+	}
+	return GetCurrentContext()
+}
+
+// apiURLTemplate is the default API URL pattern; "{env}" is replaced with the context name.
+const apiURLTemplate = "https://fwd.{env}.cohandv.io"
+
+// resolveAPIURL determines the API URL for contextName.
+// Precedence: an explicit --api-url flag (interpolating "{env}" with contextName if
+// present, else used verbatim as a literal override), then the context's previously
+// saved API URL, then the default template with contextName substituted in.
+func resolveAPIURL(cmd *cobra.Command, contextName, savedAPIURL string) string {
+	if cmd.Root().PersistentFlags().Changed("api-url") {
+		raw, _ := cmd.Root().PersistentFlags().GetString("api-url")
+		if strings.Contains(raw, "{env}") {
+			return strings.ReplaceAll(raw, "{env}", contextName)
+		}
+		return raw
+	}
+	if savedAPIURL != "" {
+		return savedAPIURL
+	}
+	return strings.ReplaceAll(apiURLTemplate, "{env}", contextName)
+}
 
 // Context represents an API server context
 type Context struct {
@@ -16,8 +51,27 @@ type Context struct {
 
 // Config represents the CLI configuration
 type Config struct {
-	Contexts       []Context `json:"contexts"`
-	CurrentContext string    `json:"current_context"`
+	Contexts       []Context                `json:"contexts"`
+	CurrentContext string                   `json:"current_context"`
+	ClientBindings map[string]ClientBinding `json:"client_bindings,omitempty"`
+}
+
+// ClientBinding configures a dedicated subcommand (keyed by name, e.g.
+// "psql") that opens a tunnel and launches a local CLI client against it.
+// Entries here override the built-in defaults field-by-field; unset fields
+// keep the default.
+type ClientBinding struct {
+	Type string `json:"type,omitempty"` // match connections with this exact connection type, e.g. "postgres"
+	Cli  string `json:"cli,omitempty"`  // binary name to exec, resolved via PATH unless Path is set
+	Path string `json:"path,omitempty"` // explicit path to the binary, overrides PATH lookup
+}
+
+// SetConfigPath overrides the CLI config file path. Used by main binaries
+// that define their own "--config" flag separately from this package's
+// root command (and so can't bind it directly to configPath via
+// cobra's StringVar) - they call this once the flag's been parsed instead.
+func SetConfigPath(path string) {
+	configPath = path
 }
 
 // GetConfigPath returns the path to the config file

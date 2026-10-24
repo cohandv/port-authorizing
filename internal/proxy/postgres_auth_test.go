@@ -26,7 +26,8 @@ func TestNewPostgresAuthProxy(t *testing.T) {
 
 	whitelist := []string{"^SELECT.*", "^INSERT.*"}
 
-	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", globalConfig, whitelist, nil)
+	roles := []string{"admin", "developer"}
+	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", roles, globalConfig, whitelist, nil)
 
 	if proxy == nil {
 		t.Fatal("NewPostgresAuthProxy() returned nil")
@@ -46,6 +47,10 @@ func TestNewPostgresAuthProxy(t *testing.T) {
 
 	if len(proxy.whitelist) != 2 {
 		t.Errorf("whitelist length = %d, want 2", len(proxy.whitelist))
+	}
+
+	if len(proxy.roles) != 2 {
+		t.Errorf("roles length = %d, want 2", len(proxy.roles))
 	}
 }
 
@@ -67,7 +72,7 @@ func TestNewPostgresAuthProxy_EmptyWhitelist(t *testing.T) {
 		},
 	}
 
-	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", globalConfig, []string{}, nil)
+	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", nil, globalConfig, []string{}, nil)
 
 	if proxy == nil {
 		t.Fatal("NewPostgresAuthProxy() returned nil")
@@ -139,7 +144,7 @@ func TestPostgresAuthProxy_IsQueryAllowed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", globalConfig, tt.whitelist, nil)
+			proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", nil, globalConfig, tt.whitelist, nil)
 			got := proxy.isQueryAllowed(tt.query)
 
 			if got != tt.want {
@@ -166,7 +171,7 @@ func TestPostgresAuthProxy_IsQueryAllowed_InvalidRegex(t *testing.T) {
 
 	// Invalid regex pattern
 	whitelist := []string{"[invalid(regex"}
-	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", globalConfig, whitelist, nil)
+	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", nil, globalConfig, whitelist, nil)
 
 	// Should not crash with invalid regex, should return false
 	allowed := proxy.isQueryAllowed("SELECT * FROM users")
@@ -191,7 +196,7 @@ func BenchmarkPostgresAuthProxy_IsQueryAllowed(b *testing.B) {
 	}
 
 	whitelist := []string{"^SELECT.*", "^INSERT.*", "^UPDATE.*"}
-	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", globalConfig, whitelist, nil)
+	proxy := NewPostgresAuthProxy(connConfig, "", "user1", "conn-123", nil, globalConfig, whitelist, nil)
 	query := "SELECT * FROM users WHERE id=1"
 
 	b.ResetTimer()

@@ -113,12 +113,12 @@ func (cs ConfigSource) MarshalJSON() ([]byte, error) {
 	// This is important for API communication
 	type rawConfigSource ConfigSource
 	raw := rawConfigSource(cs)
-	
+
 	// Set default type if empty
 	if raw.Type == "" {
 		raw.Type = ConfigSourceTypePlain
 	}
-	
+
 	return json.Marshal(raw)
 }
 
@@ -132,6 +132,7 @@ type Config struct {
 	Logging     LoggingConfig      `yaml:"logging"`
 	Approval    *ApprovalConfig    `yaml:"approval,omitempty"`
 	Storage     *StorageConfig     `yaml:"storage,omitempty"`
+	Kubernetes  *KubernetesConfig  `yaml:"kubernetes,omitempty"`
 	Environment string             `yaml:"environment"`
 }
 
@@ -140,6 +141,12 @@ type ServerConfig struct {
 	Port                  int           `yaml:"port"`
 	MaxConnectionDuration time.Duration `yaml:"max_connection_duration"`
 	BaseURL               string        `yaml:"base_url,omitempty"` // Base URL for callbacks (e.g., for Slack approval buttons)
+	Cache                 CacheConfig   `yaml:"cache"`
+}
+
+// CacheConfig contains cache settings
+type CacheConfig struct {
+	TTL time.Duration `yaml:"ttl,omitempty"` // TTL for ConfigMap/Secret resolution cache (default: 2m)
 }
 
 // AuthConfig contains authentication settings
@@ -172,22 +179,47 @@ type User struct {
 	Roles    []string     `yaml:"roles" json:"roles"`
 }
 
+// TLSConfig defines TLS/SSL configuration for connections
+type TLSConfig struct {
+	Enabled    bool   `yaml:"enabled,omitempty" json:"enabled,omitempty"`         // Enable TLS/SSL
+	SkipVerify bool   `yaml:"skip_verify,omitempty" json:"skip_verify,omitempty"` // Skip TLS certificate verification (insecure)
+	ServerName string `yaml:"server_name,omitempty" json:"server_name,omitempty"` // Server name for TLS verification
+	CACert     string `yaml:"ca_cert,omitempty" json:"ca_cert,omitempty"`         // Path to CA certificate file
+	ClientCert string `yaml:"client_cert,omitempty" json:"client_cert,omitempty"` // Path to client certificate file
+	ClientKey  string `yaml:"client_key,omitempty" json:"client_key,omitempty"`   // Path to client key file
+}
+
 // ConnectionConfig defines an available connection endpoint
 type ConnectionConfig struct {
 	Name     string            `yaml:"name" json:"name"`
-	Type     string            `yaml:"type" json:"type"` // postgres, http, tcp
+	Type     string            `yaml:"type" json:"type"` // postgres, http, tcp, redis, k8s_services
 	Host     string            `yaml:"host" json:"host"`
 	Port     int               `yaml:"port" json:"port"`
 	Scheme   string            `yaml:"scheme,omitempty" json:"scheme,omitempty"`     // for HTTP: http/https
 	Duration time.Duration     `yaml:"duration,omitempty" json:"duration,omitempty"` // connection timeout duration
 	Tags     []string          `yaml:"tags,omitempty" json:"tags,omitempty"`         // Tags for policy matching (env:prod, team:backend, etc.)
 	Metadata map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`
-	// Backend credentials (for protocols like Postgres where proxy re-authenticates)
+	// Backend credentials (for protocols like Postgres/Redis where proxy re-authenticates)
 	BackendUsername ConfigSource `yaml:"backend_username,omitempty" json:"backend_username,omitempty"`
 	BackendPassword ConfigSource `yaml:"backend_password,omitempty" json:"backend_password,omitempty"`
 	BackendDatabase string       `yaml:"backend_database,omitempty" json:"backend_database,omitempty"`
+	// TLS/SSL configuration (for Redis, Postgres, etc.)
+	TLS *TLSConfig `yaml:"tls,omitempty" json:"tls,omitempty"`
 	// Deprecated: use policies instead
 	Whitelist []string `yaml:"whitelist,omitempty" json:"whitelist,omitempty"` // DEPRECATED: regex patterns, use policies instead
+	// K8s Services specific configuration
+	K8sExcludeNamespaces []string         `yaml:"k8s_exclude_namespaces,omitempty" json:"k8s_exclude_namespaces,omitempty"` // For k8s_services: namespaces to exclude
+	K8sIncludeNamespaces []string         `yaml:"k8s_include_namespaces,omitempty" json:"k8s_include_namespaces,omitempty"` // For k8s_services: if set, only include these
+	K8sIgnoreServices    []string         `yaml:"k8s_ignore_services,omitempty" json:"k8s_ignore_services,omitempty"`       // For k8s_services: regex patterns to ignore service names
+	K8sPortMappings      []K8sPortMapping `yaml:"k8s_port_mappings,omitempty" json:"k8s_port_mappings,omitempty"`           // For k8s_services: explicit protocol mappings for ports
+}
+
+// K8sPortMapping defines protocol mapping for K8s service ports
+// You can match by port name (e.g., "http", "postgres") or port number
+type K8sPortMapping struct {
+	PortName string `yaml:"port_name,omitempty" json:"port_name,omitempty"` // Match by K8s service port name (e.g., "http", "grpc")
+	Port     int32  `yaml:"port,omitempty" json:"port,omitempty"`           // Match by port number (e.g., 5432)
+	Protocol string `yaml:"protocol" json:"protocol"`                       // Protocol to use: http, https, postgres, redis, tcp
 }
 
 // RolePolicy defines access policies for roles
@@ -202,10 +234,9 @@ type RolePolicy struct {
 
 // SecurityConfig contains security settings
 type SecurityConfig struct {
-	EnableLLMAnalysis   bool          `yaml:"enable_llm_analysis"`
-	LLMProvider         string        `yaml:"llm_provider,omitempty"`
-	LLMAPIKey           string        `yaml:"llm_api_key,omitempty"`
-	ConfigSourceCacheTTL time.Duration `yaml:"config_source_cache_ttl,omitempty"` // TTL for ConfigMap/Secret resolution cache (default: 1m)
+	EnableLLMAnalysis bool   `yaml:"enable_llm_analysis"`
+	LLMProvider       string `yaml:"llm_provider,omitempty"`
+	LLMAPIKey         string `yaml:"llm_api_key,omitempty"`
 }
 
 // LoggingConfig contains logging settings
@@ -213,6 +244,30 @@ type LoggingConfig struct {
 	AuditLogPath  string `yaml:"audit_log_path"`
 	LogLevel      string `yaml:"log_level"`
 	AuditMemoryMB int    `yaml:"audit_memory_mb,omitempty"` // Max memory for in-memory audit buffer (0 to disable, default 1MB)
+}
+
+// KubernetesConfig contains Kubernetes-related settings
+type KubernetesConfig struct {
+	Discovery KubernetesDiscoveryConfig `yaml:"discovery"`
+	Services  K8sServicesConfig         `yaml:"services,omitempty"`
+}
+
+// KubernetesDiscoveryConfig contains resource discovery settings
+type KubernetesDiscoveryConfig struct {
+	Configuration KubernetesConfigurationDiscovery `yaml:"configuration"`
+}
+
+// KubernetesConfigurationDiscovery contains ConfigMap/Secret discovery settings
+type KubernetesConfigurationDiscovery struct {
+	Namespaces []string `yaml:"namespaces" json:"namespaces"` // Allowed namespaces for ConfigMap/Secret listing (default: ["port-authorizer"])
+}
+
+// K8sServicesConfig contains settings for K8s service discovery connections
+type K8sServicesConfig struct {
+	ExcludeNamespaces []string `yaml:"exclude_namespaces,omitempty" json:"exclude_namespaces,omitempty"` // Namespaces to exclude (default: kube-system, etc.)
+	IncludeNamespaces []string `yaml:"include_namespaces,omitempty" json:"include_namespaces,omitempty"` // If set, only include these namespaces
+	PortRangeStart    int      `yaml:"port_range_start,omitempty" json:"port_range_start,omitempty"`     // Start of client port range (default: 10000)
+	PortRangeEnd      int      `yaml:"port_range_end,omitempty" json:"port_range_end,omitempty"`         // End of client port range (default: 20000)
 }
 
 // ApprovalConfig contains approval workflow settings
@@ -225,10 +280,12 @@ type ApprovalConfig struct {
 
 // ApprovalPatternConfig defines which requests require approval
 type ApprovalPatternConfig struct {
-	Pattern        string   `yaml:"pattern" json:"pattern"`                         // Regex pattern "^METHOD /path$"
-	Tags           []string `yaml:"tags,omitempty" json:"tags,omitempty"`           // Connection tags (e.g., "env:prod", "team:backend")
-	TagMatch       string   `yaml:"tag_match,omitempty" json:"tag_match,omitempty"` // "all" (default) or "any"
-	TimeoutSeconds int      `yaml:"timeout_seconds" json:"timeout_seconds"`         // Approval timeout in seconds
+	Pattern        string   `yaml:"pattern" json:"pattern"`                           // Regex pattern "^METHOD /path$"
+	Tags           []string `yaml:"tags,omitempty" json:"tags,omitempty"`             // Connection tags (e.g., "env:prod", "team:backend")
+	TagMatch       string   `yaml:"tag_match,omitempty" json:"tag_match,omitempty"`   // "all" (default) or "any"
+	Roles          []string `yaml:"roles,omitempty" json:"roles,omitempty"`           // User roles required for this pattern (empty = restrictive)
+	RoleMatch      string   `yaml:"role_match,omitempty" json:"role_match,omitempty"` // "any" (default) or "all"
+	TimeoutSeconds int      `yaml:"timeout_seconds" json:"timeout_seconds"`           // Approval timeout in seconds
 }
 
 // WebhookApprovalConfig configures generic webhook approvals
@@ -285,10 +342,10 @@ func LoadConfigWithResolver(path, namespace string) (*Config, error) {
 		resolverNamespace = config.Storage.Namespace
 	}
 
-	// Determine cache TTL (default 1 minute)
-	cacheTTL := config.Security.ConfigSourceCacheTTL
+	// Determine cache TTL (default 2 minutes)
+	cacheTTL := config.Server.Cache.TTL
 	if cacheTTL == 0 {
-		cacheTTL = 1 * time.Minute
+		cacheTTL = 2 * time.Minute
 	}
 
 	resolver, err := NewConfigSourceResolverWithTTL(resolverNamespace, cacheTTL)

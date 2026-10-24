@@ -3,6 +3,8 @@ server:
   port: 8080
   max_connection_duration: 2h
   base_url: "http://api:8080"  # Use docker service name
+  cache:
+    ttl: 2m  # How long to cache ConfigMap/Secret values (default: 2m)
 
 auth:
   jwt_secret: "your-secret-key-change-this-in-production"
@@ -173,7 +175,14 @@ security:
   enable_llm_analysis: false
   llm_provider: "openai"
   llm_api_key: ""
-  config_source_cache_ttl: 1m  # How long to cache ConfigMap/Secret values (default: 1m)
+
+
+# Kubernetes configuration
+kubernetes:
+  discovery:
+    configuration:
+      namespaces:
+        - port-authorizer
 
 logging:
   audit_log_path: "stdout"

@@ -41,50 +41,60 @@ func TestManager_AddApprovalPattern(t *testing.T) {
 	mgr := NewManager(5*time.Minute, "test")
 
 	tests := []struct {
-		name     string
-		pattern  string
-		tags     []string
-		tagMatch string
-		timeout  time.Duration
-		wantErr  bool
+		name      string
+		pattern   string
+		tags      []string
+		tagMatch  string
+		roles     []string
+		roleMatch string
+		timeout   time.Duration
+		wantErr   bool
 	}{
 		{
-			name:     "valid pattern without tags",
-			pattern:  "^DELETE /.*",
-			tags:     nil,
-			tagMatch: "",
-			timeout:  5 * time.Minute,
-			wantErr:  false,
+			name:      "valid pattern with roles",
+			pattern:   "^DELETE /.*",
+			tags:      nil,
+			tagMatch:  "",
+			roles:     []string{"admin"},
+			roleMatch: "",
+			timeout:   5 * time.Minute,
+			wantErr:   false,
 		},
 		{
-			name:     "valid pattern with tags",
-			pattern:  "^DELETE /.*",
-			tags:     []string{"env:production"},
-			tagMatch: "all",
-			timeout:  5 * time.Minute,
-			wantErr:  false,
+			name:      "valid pattern with tags and roles",
+			pattern:   "^DELETE /.*",
+			tags:      []string{"env:production"},
+			tagMatch:  "all",
+			roles:     []string{"admin", "developer"},
+			roleMatch: "any",
+			timeout:   5 * time.Minute,
+			wantErr:   false,
 		},
 		{
-			name:     "valid pattern with zero timeout uses default",
-			pattern:  "^POST /.*",
-			tags:     nil,
-			tagMatch: "",
-			timeout:  0,
-			wantErr:  false,
+			name:      "valid pattern with zero timeout uses default",
+			pattern:   "^POST /.*",
+			tags:      nil,
+			tagMatch:  "",
+			roles:     []string{"developer"},
+			roleMatch: "",
+			timeout:   0,
+			wantErr:   false,
 		},
 		{
-			name:     "invalid regex pattern",
-			pattern:  "[invalid",
-			tags:     nil,
-			tagMatch: "",
-			timeout:  5 * time.Minute,
-			wantErr:  true,
+			name:      "invalid regex pattern",
+			pattern:   "[invalid",
+			tags:      nil,
+			tagMatch:  "",
+			roles:     []string{"admin"},
+			roleMatch: "",
+			timeout:   5 * time.Minute,
+			wantErr:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := mgr.AddApprovalPattern(tt.pattern, tt.tags, tt.tagMatch, tt.timeout)
+			err := mgr.AddApprovalPattern(tt.pattern, tt.tags, tt.tagMatch, tt.roles, tt.roleMatch, tt.timeout)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("AddApprovalPattern() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -94,71 +104,118 @@ func TestManager_AddApprovalPattern(t *testing.T) {
 
 func TestManager_RequiresApproval(t *testing.T) {
 	mgr := NewManager(5*time.Minute, "test")
-	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", 3*time.Minute)
-	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 10*time.Minute)
-	_ = mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", 5*time.Minute)
+	// Pattern with roles - only users with "admin" or "developer" role
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", []string{"admin", "developer"}, "any", 3*time.Minute)
+	// Pattern with tags and roles
+	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", []string{"admin"}, "any", 10*time.Minute)
+	// Pattern with any tag match and all role match
+	_ = mgr.AddApprovalPattern("^PUT /.*", []string{"team:backend", "env:production"}, "any", []string{"developer", "admin"}, "all", 5*time.Minute)
 
 	tests := []struct {
 		name           string
 		method         string
 		path           string
 		connectionTags []string
+		userRoles      []string
 		wantRequired   bool
 		wantTimeout    time.Duration
 	}{
 		{
-			name:           "DELETE matches pattern without tags",
+			name:           "DELETE matches pattern - user has admin role",
 			method:         "DELETE",
 			path:           "/api/users/1",
 			connectionTags: nil,
+			userRoles:      []string{"admin"},
 			wantRequired:   true,
 			wantTimeout:    3 * time.Minute,
 		},
 		{
-			name:           "POST to admin on production matches",
+			name:           "DELETE matches pattern - user has developer role",
+			method:         "DELETE",
+			path:           "/api/users/1",
+			connectionTags: nil,
+			userRoles:      []string{"developer"},
+			wantRequired:   true,
+			wantTimeout:    3 * time.Minute,
+		},
+		{
+			name:           "DELETE does not match - user has viewer role (no matching role)",
+			method:         "DELETE",
+			path:           "/api/users/1",
+			connectionTags: nil,
+			userRoles:      []string{"viewer"},
+			wantRequired:   false,
+			wantTimeout:    0,
+		},
+		{
+			name:           "DELETE does not match - user has no roles",
+			method:         "DELETE",
+			path:           "/api/users/1",
+			connectionTags: nil,
+			userRoles:      nil,
+			wantRequired:   false,
+			wantTimeout:    0,
+		},
+		{
+			name:           "POST to admin on production matches - admin role",
 			method:         "POST",
 			path:           "/admin/settings",
 			connectionTags: []string{"env:production"},
+			userRoles:      []string{"admin"},
 			wantRequired:   true,
 			wantTimeout:    10 * time.Minute,
+		},
+		{
+			name:           "POST to admin on production does not match - developer role (needs admin)",
+			method:         "POST",
+			path:           "/admin/settings",
+			connectionTags: []string{"env:production"},
+			userRoles:      []string{"developer"},
+			wantRequired:   false,
+			wantTimeout:    0,
 		},
 		{
 			name:           "POST to admin on dev does not match",
 			method:         "POST",
 			path:           "/admin/settings",
 			connectionTags: []string{"env:dev"},
+			userRoles:      []string{"admin"},
 			wantRequired:   false,
 			wantTimeout:    0,
 		},
 		{
-			name:           "PUT with any tag match - has team:backend",
+			name:           "PUT with any tag match - has both required roles",
 			method:         "PUT",
 			path:           "/api/users",
 			connectionTags: []string{"team:backend"},
+			userRoles:      []string{"developer", "admin"},
 			wantRequired:   true,
 			wantTimeout:    5 * time.Minute,
 		},
 		{
-			name:           "PUT with any tag match - has env:production",
+			name:           "PUT does not match - only has one of two required roles (all match)",
 			method:         "PUT",
 			path:           "/api/users",
 			connectionTags: []string{"env:production"},
-			wantRequired:   true,
-			wantTimeout:    5 * time.Minute,
+			userRoles:      []string{"admin"},
+			wantRequired:   false,
+			wantTimeout:    0,
 		},
 		{
 			name:           "PUT without matching tags",
 			method:         "PUT",
 			path:           "/api/users",
 			connectionTags: []string{"env:dev"},
+			userRoles:      []string{"developer", "admin"},
 			wantRequired:   false,
 			wantTimeout:    0,
 		},
 		{
-			name:           "GET does not match",
+			name:           "GET does not match any pattern",
 			method:         "GET",
 			path:           "/api/users",
 			connectionTags: nil,
+			userRoles:      []string{"admin"},
 			wantRequired:   false,
 			wantTimeout:    0,
 		},
@@ -166,12 +223,121 @@ func TestManager_RequiresApproval(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			required, timeout := mgr.RequiresApproval(tt.method, tt.path, tt.connectionTags)
+			required, timeout := mgr.RequiresApproval(tt.method, tt.path, tt.connectionTags, tt.userRoles)
 			if required != tt.wantRequired {
 				t.Errorf("RequiresApproval() required = %v, want %v", required, tt.wantRequired)
 			}
 			if timeout != tt.wantTimeout {
 				t.Errorf("RequiresApproval() timeout = %v, want %v", timeout, tt.wantTimeout)
+			}
+		})
+	}
+}
+
+func TestManager_RequiresApproval_EmptyRoles(t *testing.T) {
+	mgr := NewManager(5*time.Minute, "test")
+	// Pattern with no roles - should apply to all users (permissive)
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", nil, "", 3*time.Minute)
+
+	tests := []struct {
+		name         string
+		method       string
+		path         string
+		userRoles    []string
+		wantRequired bool
+	}{
+		{
+			name:         "Pattern with no roles applies to admin",
+			method:       "DELETE",
+			path:         "/api/users/1",
+			userRoles:    []string{"admin"},
+			wantRequired: true,
+		},
+		{
+			name:         "Pattern with no roles applies to any user",
+			method:       "DELETE",
+			path:         "/api/users/1",
+			userRoles:    []string{"developer", "viewer"},
+			wantRequired: true,
+		},
+		{
+			name:         "Pattern with no roles applies even to users with no roles",
+			method:       "DELETE",
+			path:         "/api/users/1",
+			userRoles:    nil,
+			wantRequired: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			required, _ := mgr.RequiresApproval(tt.method, tt.path, nil, tt.userRoles)
+			if required != tt.wantRequired {
+				t.Errorf("RequiresApproval() required = %v, want %v", required, tt.wantRequired)
+			}
+		})
+	}
+}
+
+func TestManager_matchesRoles(t *testing.T) {
+	mgr := NewManager(5*time.Minute, "test")
+
+	tests := []struct {
+		name          string
+		userRoles     []string
+		requiredRoles []string
+		matchMode     string
+		want          bool
+	}{
+		{
+			name:          "any match - user has one of required roles",
+			userRoles:     []string{"admin"},
+			requiredRoles: []string{"admin", "developer"},
+			matchMode:     "any",
+			want:          true,
+		},
+		{
+			name:          "any match - user has none of required roles",
+			userRoles:     []string{"viewer"},
+			requiredRoles: []string{"admin", "developer"},
+			matchMode:     "any",
+			want:          false,
+		},
+		{
+			name:          "all match - user has all required roles",
+			userRoles:     []string{"admin", "developer", "viewer"},
+			requiredRoles: []string{"admin", "developer"},
+			matchMode:     "all",
+			want:          true,
+		},
+		{
+			name:          "all match - user missing one role",
+			userRoles:     []string{"admin"},
+			requiredRoles: []string{"admin", "developer"},
+			matchMode:     "all",
+			want:          false,
+		},
+		{
+			name:          "empty required roles - permissive (matches all)",
+			userRoles:     []string{"admin"},
+			requiredRoles: nil,
+			matchMode:     "any",
+			want:          true,
+		},
+		{
+			name:          "empty user roles - no match",
+			userRoles:     nil,
+			requiredRoles: []string{"admin"},
+			matchMode:     "any",
+			want:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mgr.matchesRoles(tt.userRoles, tt.requiredRoles, tt.matchMode)
+			if got != tt.want {
+				t.Errorf("matchesRoles() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -379,14 +545,15 @@ func (m *mockProvider) GetProviderName() string {
 
 func BenchmarkManager_RequiresApproval(b *testing.B) {
 	mgr := NewManager(5*time.Minute, "test")
-	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", 5*time.Minute)
-	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", 5*time.Minute)
-	_ = mgr.AddApprovalPattern("^PUT /api/users/.*", nil, "", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^DELETE /.*", nil, "", []string{"admin", "developer"}, "any", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^POST /admin/.*", []string{"env:production"}, "all", []string{"admin"}, "any", 5*time.Minute)
+	_ = mgr.AddApprovalPattern("^PUT /api/users/.*", nil, "", []string{"developer"}, "any", 5*time.Minute)
 
 	tags := []string{"env:production"}
+	roles := []string{"admin"}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		mgr.RequiresApproval("DELETE", "/api/users/123", tags)
+		mgr.RequiresApproval("DELETE", "/api/users/123", tags, roles)
 	}
 }

@@ -33,22 +33,15 @@ with centralized authentication, role-based authorization, and query whitelistin
 	}
 	serverCmd.Flags().String("config", "config.yaml", "Path to configuration file")
 
-	// Client commands (login, list, connect, context)
+	// Client commands (login, list, connect, context, version)
 	loginCmd := cli.NewLoginCmd()
 	listCmd := cli.NewListCmd()
 	connectCmd := cli.NewConnectCmd()
 	contextCmd := cli.NewContextCmd()
+	versionCmd := cli.NewVersionCmd()
 
-	// Version command
-	versionCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Port Authorizing %s\n", Version)
-			fmt.Printf("Build Time: %s\n", BuildTime)
-			fmt.Printf("Git Commit: %s\n", GitCommit)
-		},
-	}
+	// Set version info in CLI package
+	cli.SetVersion(Version, BuildTime, GitCommit)
 
 	// Add commands
 	rootCmd.AddCommand(serverCmd)
@@ -57,10 +50,23 @@ with centralized authentication, role-based authorization, and query whitelistin
 	rootCmd.AddCommand(connectCmd)
 	rootCmd.AddCommand(contextCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(cli.NewClientBindingCommands()...)
 
 	// Global flags
-	rootCmd.PersistentFlags().String("api-url", "http://localhost:8080", "API server URL")
+	rootCmd.PersistentFlags().String("api-url", "", "API server URL (default: https://fwd.{context}.cohandv.io; override with a custom URL, optionally containing \"{env}\" to interpolate the context name)")
+	rootCmd.PersistentFlags().StringP("context", "c", "", "Context to use for this command (default: current context). For 'list'/'connect' this only affects this invocation; for 'login' it's the context that gets saved and made current.")
 	rootCmd.PersistentFlags().String("config", os.Getenv("HOME")+"/.port-auth/config.json", "Path to CLI config file")
+
+	// This binary's "--config" flag is local to its own rootCmd, not bound
+	// to the cli package's internal configPath - thread it through once
+	// flags are parsed (and before any subcommand runs) so overriding it
+	// actually affects which config file GetConfigPath()/LoadConfig() use.
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if path, _ := cmd.Flags().GetString("config"); path != "" {
+			cli.SetConfigPath(path)
+		}
+		return nil
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

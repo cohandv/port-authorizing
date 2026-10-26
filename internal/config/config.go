@@ -203,6 +203,8 @@ type ConnectionConfig struct {
 	BackendUsername ConfigSource `yaml:"backend_username,omitempty" json:"backend_username,omitempty"`
 	BackendPassword ConfigSource `yaml:"backend_password,omitempty" json:"backend_password,omitempty"`
 	BackendDatabase string       `yaml:"backend_database,omitempty" json:"backend_database,omitempty"`
+	// Extra startup parameters for the backend (run-time settings, e.g. statement_timeout); clients cannot override them at connect
+	BackendParams map[string]string `yaml:"backend_params,omitempty" json:"backend_params,omitempty"`
 	// TLS/SSL configuration (for Redis, Postgres, etc.)
 	TLS *TLSConfig `yaml:"tls,omitempty" json:"tls,omitempty"`
 	// Deprecated: use policies instead

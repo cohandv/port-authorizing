@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -331,6 +332,21 @@ func (p *PostgresAuthProxy) sendBackendStartup(conn net.Conn, username, database
 	buf.WriteByte(0)
 	buf.WriteString(database)
 	buf.WriteByte(0)
+
+	keys := make([]string, 0, len(p.config.BackendParams))
+	for k := range p.config.BackendParams {
+		// user/database come from backend credentials; a duplicate key would be ambiguous to the backend
+		if k != "user" && k != "database" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		buf.WriteString(k)
+		buf.WriteByte(0)
+		buf.WriteString(p.config.BackendParams[k])
+		buf.WriteByte(0)
+	}
 
 	// End marker
 	buf.WriteByte(0)

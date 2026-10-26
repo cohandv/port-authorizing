@@ -137,10 +137,6 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	return startMultipleConnections(targets, apiURL, token)
 }
 
-func getConnectionsByTag(apiURL, token, tag string, basePort int) ([]connectionTarget, error) {
-	return getConnectionsByTags(apiURL, token, []string{tag}, basePort)
-}
-
 func getConnectionsByTags(apiURL, token string, tags []string, basePort int) ([]connectionTarget, error) {
 	connections, err := fetchConnections(apiURL, token)
 	if err != nil {
@@ -241,68 +237,6 @@ func startSingleConnection(ctx context.Context, target connectionTarget, apiURL,
 
 	// Start local proxy server with context
 	return startLocalProxyWithContext(ctx, target.Port, connResp.ConnectionID, token, connResp.ExpiresAt, apiURL)
-}
-
-func startLocalProxy(port int, connectionID, token string, expiresAt string, apiURL string) error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		return fmt.Errorf("failed to listen on port %d: %w", port, err)
-	}
-	defer func() { _ = listener.Close() }()
-
-	fmt.Printf("✓ Proxy server listening on localhost:%d\n", port)
-	fmt.Printf("Connection will expire at: %s\n", expiresAt)
-	fmt.Println("Press Ctrl+C to stop")
-
-	// Handle interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Parse expiry time
-	expiry, err := time.Parse(time.RFC3339, expiresAt)
-	if err != nil {
-		fmt.Printf("Warning: could not parse expiry time: %v\n", err)
-	} else {
-		// Start timeout monitor
-		go func() {
-			timeUntilExpiry := time.Until(expiry)
-			if timeUntilExpiry > 0 {
-				<-time.After(timeUntilExpiry)
-				fmt.Printf("\n⏱  Connection timeout reached at %s\n", expiresAt)
-				fmt.Println("Server has disconnected the connection.")
-				fmt.Println("Run 'connect' again to establish a new connection.")
-				os.Exit(0)
-			}
-		}()
-	}
-
-	// Accept connections in goroutine
-	connChan := make(chan net.Conn)
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			connChan <- conn
-		}
-	}()
-
-	// Main loop
-	// Create closure to capture apiURL
-	handleConnection := func(conn net.Conn) {
-		handleLocalConnection(conn, connectionID, token, apiURL)
-	}
-
-	for {
-		select {
-		case <-sigChan:
-			fmt.Println("\nShutting down...")
-			return nil
-		case conn := <-connChan:
-			go handleConnection(conn)
-		}
-	}
 }
 
 func startLocalProxyWithContext(ctx context.Context, port int, connectionID, token string, expiresAt string, apiURL string) error {

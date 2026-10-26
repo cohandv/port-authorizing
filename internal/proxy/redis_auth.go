@@ -197,8 +197,8 @@ func (p *RedisAuthProxy) sendAuthCommand(conn net.Conn, authCmd string) error {
 
 	// Read response byte-by-byte until we get a complete RESP message
 	// AUTH response is "+OK\r\n" (5 bytes) or "-ERR message\r\n"
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{}) // Clear deadline
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }() // Clear deadline
 
 	var responseBuf []byte
 	buf := make([]byte, 1)
@@ -230,12 +230,6 @@ func (p *RedisAuthProxy) sendAuthCommand(conn net.Conn, authCmd string) error {
 	return nil
 }
 
-// sendAuthSuccess sends authentication success to client
-func (p *RedisAuthProxy) sendAuthSuccess(conn net.Conn) error {
-	// Send +OK\r\n
-	_, err := conn.Write([]byte("+OK\r\n"))
-	return err
-}
 
 // sendError sends an error to client in RESP format
 func (p *RedisAuthProxy) sendError(conn net.Conn, message string) {
@@ -243,13 +237,6 @@ func (p *RedisAuthProxy) sendError(conn net.Conn, message string) {
 	_, _ = conn.Write([]byte(errMsg))
 }
 
-// min returns the smaller of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 // forwardWithValidation forwards data and validates/logs commands
 func (p *RedisAuthProxy) forwardWithValidation(clientConn, backendConn net.Conn, validateCommands bool) {
@@ -430,14 +417,12 @@ func (p *RedisAuthProxy) extractRESPCommands(data []byte) []string {
 		// Look for array marker
 		if str[pos] == '*' {
 			// Find end of this command and parse it
-			endPos := pos
-
 			// Read array count line
 			lineEnd := strings.Index(str[pos:], "\r\n")
 			if lineEnd == -1 {
 				break
 			}
-			endPos = pos + lineEnd + 2
+			endPos := pos + lineEnd + 2
 
 			// Extract just this command's data
 			cmdStart := pos
@@ -445,7 +430,7 @@ func (p *RedisAuthProxy) extractRESPCommands(data []byte) []string {
 			// Count expected bulk strings
 			countStr := strings.TrimSpace(str[pos+1 : pos+lineEnd])
 			var count int
-			fmt.Sscanf(countStr, "%d", &count)
+			_, _ = fmt.Sscanf(countStr, "%d", &count)
 
 			// Read each bulk string
 			for i := 0; i < count && endPos < len(str); i++ {

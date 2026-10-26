@@ -115,8 +115,8 @@ func (p *RedisProxy) authenticateToBackend(conn net.Conn, password string) error
 
 	// Read response byte-by-byte until we get a complete RESP message
 	// AUTH response is "+OK\r\n" (5 bytes) or "-ERR message\r\n"
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	defer conn.SetReadDeadline(time.Time{}) // Clear deadline
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer func() { _ = conn.SetReadDeadline(time.Time{}) }() // Clear deadline
 
 	var responseBuf []byte
 	buf := make([]byte, 1)
@@ -251,21 +251,6 @@ func (p *RedisProxy) logCommand(command string) {
 		"connection_id": p.connectionID,
 		"command":       command,
 	})
-}
-
-// validateAPICredentials validates username/password against API users
-func (p *RedisProxy) validateAPICredentials(username, password string) bool {
-	if p.apiConfig == nil {
-		return false
-	}
-
-	for _, user := range p.apiConfig.Auth.Users {
-		if user.Username.Value == username && user.Password.Value == password {
-			return true
-		}
-	}
-
-	return false
 }
 
 // dialBackend creates a connection to the Redis backend with optional TLS support

@@ -55,7 +55,6 @@ type k8sServiceConnection struct {
 	mapping  servicePortMapping
 	listener net.Listener
 	wsConn   *websocket.Conn
-	wsMu     sync.Mutex
 	done     chan struct{}
 	ready    chan bool // Signals when connection is established
 }
@@ -283,7 +282,7 @@ func (c *k8sServiceConnection) handleConnection(localConn net.Conn, apiURL, toke
 		for {
 			n, err := localConn.Read(buf)
 			if err != nil {
-				wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				_ = wsConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				return
 			}
 			if n > 0 {
@@ -341,12 +340,12 @@ func startK8sIndexServer(port int, services map[string][]K8sDiscoveredService, p
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		html := generateK8sIndexHTML(services, portMappings)
-		w.Write([]byte(html))
+		_, _ = w.Write([]byte(html))
 	})
 
 	mux.HandleFunc("/api/services", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"services":      services,
 			"port_mappings": portMappings,
 		})
@@ -357,7 +356,9 @@ func startK8sIndexServer(port int, services map[string][]K8sDiscoveredService, p
 		Handler: mux,
 	}
 
-	server.ListenAndServe()
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		fmt.Printf("k8s index server error: %v\n", err)
+	}
 }
 
 // generateK8sIndexHTML generates the HTML index page

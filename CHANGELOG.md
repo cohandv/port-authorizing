@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/cohandv/port-authorizing/compare/v1.13.0...v1.13.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* resolve golangci-lint errors (ported from upstream) ([dd59460](https://github.com/cohandv/port-authorizing/commit/dd594603c056070944e3757937b6db9ae9d5c7ac))
+
 ## [1.13.0](https://github.com/cohandv/port-authorizing/compare/v1.12.1...v1.13.0) (2025-11-04)
 
 

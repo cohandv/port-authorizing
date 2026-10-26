@@ -155,7 +155,7 @@ func toConnectionResponse(conn config.ConnectionConfig) ConnectionResponse {
 		BackendUsername:      sanitizeConfigSource(conn.BackendUsername),
 		BackendPassword:      sanitizeConfigSource(conn.BackendPassword),
 		BackendDatabase:      conn.BackendDatabase,
-		Whitelist:            conn.Whitelist,
+		Whitelist:            conn.Whitelist, //nolint:staticcheck // surfaced for API backward compat
 		TLS:                  conn.TLS,
 		K8sExcludeNamespaces: conn.K8sExcludeNamespaces,
 		K8sIncludeNamespaces: conn.K8sIncludeNamespaces,
@@ -247,7 +247,7 @@ func (s *Server) handleCreateConnection(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Validate metadata has description if metadata is provided
-	if conn.Metadata != nil && len(conn.Metadata) > 0 {
+	if len(conn.Metadata) > 0 {
 		description, ok := conn.Metadata["description"]
 		if !ok || description == "" {
 			respondError(w, http.StatusBadRequest, "Metadata must include a 'description' field")
@@ -322,7 +322,7 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Validate metadata has description if metadata is provided
-	if updatedConn.Metadata != nil && len(updatedConn.Metadata) > 0 {
+	if len(updatedConn.Metadata) > 0 {
 		description, ok := updatedConn.Metadata["description"]
 		if !ok || description == "" {
 			respondError(w, http.StatusBadRequest, "Metadata must include a 'description' field")

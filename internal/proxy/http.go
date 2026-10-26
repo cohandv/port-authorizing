@@ -43,7 +43,7 @@ func createHTTPClient(forceHTTP1 bool) *http.Client {
 
 	if !forceHTTP1 {
 		// Enable HTTP/2
-		http2.ConfigureTransport(transport)
+		_ = http2.ConfigureTransport(transport)
 	}
 
 	return &http.Client{

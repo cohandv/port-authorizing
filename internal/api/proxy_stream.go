@@ -782,7 +782,7 @@ func (s *Server) handleK8sServiceProxy(w http.ResponseWriter, r *http.Request) {
 			"target":        targetAddr,
 			"error":         err.Error(),
 		})
-		wsConn.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to connect to %s: %v", targetAddr, err)})
+		_ = wsConn.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to connect to %s: %v", targetAddr, err)})
 		return
 	}
 	defer backendConn.Close()
@@ -833,7 +833,7 @@ func (s *Server) proxyK8sHTTP(clientConn, backendConn net.Conn, conn *proxy.Conn
 	// Backend -> Client (pass through)
 	go func() {
 		defer wg.Done()
-		io.Copy(clientConn, backendConn)
+		_, _ = io.Copy(clientConn, backendConn)
 	}()
 
 	wg.Wait()
@@ -854,7 +854,9 @@ func (s *Server) proxyK8sHTTPWithWhitelist(clientConn, backendConn net.Conn, con
 		parts := strings.Fields(strings.TrimSpace(requestLine))
 		if len(parts) < 2 {
 			// Not valid HTTP, forward as-is
-			backendConn.Write([]byte(requestLine))
+			if _, err := backendConn.Write([]byte(requestLine)); err != nil {
+				return
+			}
 			continue
 		}
 
@@ -872,7 +874,7 @@ func (s *Server) proxyK8sHTTPWithWhitelist(clientConn, backendConn net.Conn, con
 				"reason":        "whitelist",
 			})
 			forbiddenResp := "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 44\r\nConnection: close\r\n\r\n{\"error\":\"Request blocked by whitelist policy\"}"
-			clientConn.Write([]byte(forbiddenResp))
+			_, _ = clientConn.Write([]byte(forbiddenResp))
 			time.Sleep(100 * time.Millisecond)
 			return
 		}
@@ -929,7 +931,7 @@ func (s *Server) proxyK8sHTTPWithWhitelist(clientConn, backendConn net.Conn, con
 
 					respBody := fmt.Sprintf("{\"error\":\"Request requires approval\",\"reason\":\"%s\"}", reason)
 					forbiddenResp := fmt.Sprintf("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(respBody), respBody)
-					clientConn.Write([]byte(forbiddenResp))
+					_, _ = clientConn.Write([]byte(forbiddenResp))
 					time.Sleep(100 * time.Millisecond)
 					return
 				}
@@ -953,7 +955,9 @@ func (s *Server) proxyK8sHTTPWithWhitelist(clientConn, backendConn net.Conn, con
 		})
 
 		// Forward request
-		backendConn.Write([]byte(requestLine))
+		if _, err := backendConn.Write([]byte(requestLine)); err != nil {
+			return
+		}
 
 		// Read and forward headers
 		for {
@@ -961,7 +965,9 @@ func (s *Server) proxyK8sHTTPWithWhitelist(clientConn, backendConn net.Conn, con
 			if err != nil {
 				return
 			}
-			backendConn.Write([]byte(headerLine))
+			if _, err := backendConn.Write([]byte(headerLine)); err != nil {
+				return
+			}
 			if headerLine == "\r\n" || headerLine == "\n" {
 				break
 			}
@@ -995,7 +1001,7 @@ func (s *Server) proxyPostgresWithLogging(src, dst net.Conn, conn *proxy.Connect
 	buf := make([]byte, 32*1024)
 
 	for {
-		src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_ = src.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 		n, err := reader.Read(buf)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -1148,13 +1154,13 @@ func (s *Server) proxyK8sTCP(clientConn, backendConn net.Conn, conn *proxy.Conne
 	// Client -> Backend
 	go func() {
 		defer wg.Done()
-		io.Copy(backendConn, clientConn)
+		_, _ = io.Copy(backendConn, clientConn)
 	}()
 
 	// Backend -> Client
 	go func() {
 		defer wg.Done()
-		io.Copy(clientConn, backendConn)
+		_, _ = io.Copy(clientConn, backendConn)
 	}()
 
 	wg.Wait()

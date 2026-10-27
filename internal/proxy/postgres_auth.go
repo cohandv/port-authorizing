@@ -963,14 +963,15 @@ func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 	// Validate each top-level statement: "SELECT 1; DROP ..." must not pass on the first one
 	result := security.NewSubqueryValidator().ValidateScript(query, p.whitelist)
 
-	// Bad patterns are skipped, not fatal; log them so a broken whitelist is visible
+	// Bad patterns are skipped, not fatal; log each one so a broken whitelist is visible
+	logged := map[string]bool{}
 	for _, sub := range result.Subqueries {
-		if sub.Error != "" {
+		if sub.Error != "" && !logged[sub.Error] {
+			logged[sub.Error] = true
 			_ = audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
 				"connection_id": p.connectionID,
 				"error":         sub.Error,
 			})
-			break
 		}
 	}
 

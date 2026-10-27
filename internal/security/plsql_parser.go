@@ -26,7 +26,22 @@ func (p *PLSQLParser) ParseScript(script string) []PLSQLSubQuery {
 	var subqueries []PLSQLSubQuery
 
 	// Split by top-level semicolons (comments dropped, literals kept intact)
-	parts := p.splitBySemicolons(script)
+	parts := p.splitBySemicolons(script, false)
+
+	// standard_conforming_strings is per session and a client can turn it off (even via SELECT set_config(...)),
+	// making \' an escape inside plain '...'. We can't know the mode, so validate both readings: whichever the
+	// server uses, every statement it runs is in this list.
+	if strings.Contains(script, `\`) {
+		seen := make(map[string]bool, len(parts))
+		for _, s := range parts {
+			seen[s] = true
+		}
+		for _, s := range p.splitBySemicolons(script, true) {
+			if !seen[s] {
+				parts = append(parts, s)
+			}
+		}
+	}
 
 	lineOffset := 0
 	for _, part := range parts {
@@ -58,9 +73,10 @@ func (p *PLSQLParser) ParseScript(script string) []PLSQLSubQuery {
 var dollarTag = regexp.MustCompile(`^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$`)
 
 // splitBySemicolons splits a PostgreSQL script on top-level semicolons. Semicolons inside '...', E'...', "...",
-// $tag$...$tag$ and comments do not split; comments are dropped. BEGIN/END are transaction statements in PostgreSQL,
-// procedural bodies (DO, CREATE FUNCTION) are dollar-quoted.
-func (p *PLSQLParser) splitBySemicolons(script string) []string {
+// $tag$...$tag$ and (nested) comments do not split; comments are dropped. BEGIN/END are transaction statements in
+// PostgreSQL, procedural bodies (DO, CREATE FUNCTION) are dollar-quoted. legacyStrings lexes plain '...' as with
+// standard_conforming_strings = off, where a backslash escapes the next character.
+func (p *PLSQLParser) splitBySemicolons(script string, legacyStrings bool) []string {
 	var parts []string
 	var cur strings.Builder
 	flush := func() {
@@ -98,15 +114,24 @@ func (p *PLSQLParser) splitBySemicolons(script string) []string {
 				i = len(script)
 			}
 		case strings.HasPrefix(script[i:], "/*"):
-			if j := strings.Index(script[i+2:], "*/"); j >= 0 {
-				i += j + 4
-			} else {
-				i = len(script)
+			// block comments nest in PostgreSQL: "/* a /* b */ c */" is one comment
+			for depth := 0; i < len(script); {
+				if strings.HasPrefix(script[i:], "/*") {
+					depth++
+					i += 2
+				} else if strings.HasPrefix(script[i:], "*/") {
+					i += 2
+					if depth--; depth == 0 {
+						break
+					}
+				} else {
+					i++
+				}
 			}
 			cur.WriteByte(' ')
 		case c == '\'' || c == '"':
-			// E'...' (escape string): backslash escapes the quote
-			esc := c == '\'' && i > 0 && (script[i-1] == 'E' || script[i-1] == 'e') && !identBefore(i-1)
+			// E'...' (escape string), or any '...' in legacy mode: backslash escapes the quote
+			esc := c == '\'' && (legacyStrings || i > 0 && (script[i-1] == 'E' || script[i-1] == 'e') && !identBefore(i-1))
 			j := end(i, c, esc)
 			cur.WriteString(script[i:j])
 			i = j

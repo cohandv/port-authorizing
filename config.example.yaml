@@ -145,6 +145,10 @@ connections:
       ref_name: password
       value: "fallback-password"
     backend_database: "app"
+    # Optional startup parameters (run-time settings) applied to every backend session
+    backend_params:
+      statement_timeout: "30s"
+      application_name: "port-authorizing"
     metadata:
       description: "Staging PostgreSQL database"
       environment: "staging"

@@ -236,3 +236,15 @@ func TestSendBackendStartup_BackendParams(t *testing.T) {
 		t.Errorf("startup params = %q, want %q", got, want)
 	}
 }
+
+func TestSendBackendStartup_RejectsInvalidParams(t *testing.T) {
+	for _, params := range []map[string]string{{"": "x"}, {"a\x00b": "x"}, {"search_path": "public\x00evil"}} {
+		p := NewPostgresAuthProxy(&config.ConnectionConfig{BackendParams: params}, "", "u", "id", nil, &config.Config{}, nil, nil)
+		client, server := net.Pipe()
+		go func() { _, _ = io.Copy(io.Discard, server) }()
+		if err := p.sendBackendStartup(client, "backend", "db"); err == nil {
+			t.Errorf("%q: want error", params)
+		}
+		_ = client.Close()
+	}
+}

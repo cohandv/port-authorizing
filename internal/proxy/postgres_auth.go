@@ -169,7 +169,8 @@ func (p *PostgresAuthProxy) HandleConnection(clientConn net.Conn) error {
 		backendDB = database
 	}
 	if err := p.sendBackendStartup(backendConn, backendUsername, backendDB); err != nil {
-		return err
+		p.sendAuthError(clientConn, "Backend startup failed")
+		return fmt.Errorf("backend startup failed: %w", err)
 	}
 
 	// Handle backend authentication
@@ -334,7 +335,11 @@ func (p *PostgresAuthProxy) sendBackendStartup(conn net.Conn, username, database
 	buf.WriteByte(0)
 
 	keys := make([]string, 0, len(p.config.BackendParams))
-	for k := range p.config.BackendParams {
+	for k, v := range p.config.BackendParams {
+		// names and values are NUL-terminated on the wire; an empty name would end the parameter list early
+		if k == "" || strings.ContainsRune(k, 0) || strings.ContainsRune(v, 0) {
+			return fmt.Errorf("invalid backend_params entry %q: empty name or NUL byte", k)
+		}
 		// user/database come from backend credentials; a duplicate key would be ambiguous to the backend
 		if k != "user" && k != "database" {
 			keys = append(keys, k)

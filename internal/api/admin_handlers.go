@@ -353,6 +353,11 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 				updatedConn.BackendUsername = conn.BackendUsername
 			}
 
+			// The admin UI has no backend_params field, so an omitted map means "unchanged"; send {} to clear it
+			if updatedConn.BackendParams == nil {
+				updatedConn.BackendParams = conn.BackendParams
+			}
+
 			cfg.Connections[i] = updatedConn
 			found = true
 			break
@@ -922,13 +927,13 @@ func (s *Server) handleGetSystemStatus(w http.ResponseWriter, r *http.Request) {
 	activeConnectionsList := s.connMgr.GetActiveConnectionsList()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":                      "running",
-		"active_connections":          activeConnections,
-		"active_connections_list":     activeConnectionsList,
-		"configured_connections":      len(cfg.Connections),
-		"policies":                    len(cfg.Policies),
-		"users":                       len(cfg.Auth.Users),
-		"uptime":                      time.Since(time.Now()).String(), // Placeholder
+		"status":                  "running",
+		"active_connections":      activeConnections,
+		"active_connections_list": activeConnectionsList,
+		"configured_connections":  len(cfg.Connections),
+		"policies":                len(cfg.Policies),
+		"users":                   len(cfg.Auth.Users),
+		"uptime":                  time.Since(time.Now()).String(), // Placeholder
 	})
 }
 

@@ -14,7 +14,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -961,76 +960,31 @@ func (p *PostgresAuthProxy) isQueryAllowed(query string) bool {
 		return true
 	}
 
-	// Check if this looks like a PL/SQL script (contains multiple statements or blocks)
-	if p.isPLSQLScript(query) {
-		// Use subquery validation for PL/SQL scripts
-		validator := security.NewSubqueryValidator()
-		validationResult := validator.ValidateScript(query, p.whitelist)
+	// Validate each top-level statement: "SELECT 1; DROP ..." must not pass on the first one
+	result := security.NewSubqueryValidator().ValidateScript(query, p.whitelist)
 
-		// Log subquery validation results
-		_ = audit.Log(p.auditLogPath, p.username, "plsql_subquery_validation", p.config.Name, map[string]interface{}{
-			"connection_id": p.connectionID,
-			"total_queries": validationResult.TotalQueries,
-			"allowed_count": validationResult.AllowedCount,
-			"blocked_count": validationResult.BlockedCount,
-			"is_allowed":    validationResult.IsAllowed,
-		})
-
-		return validationResult.IsAllowed
-	}
-
-	// For single queries, use the original logic
-	for _, pattern := range p.whitelist {
-		// Compile with case-insensitive flag
-		re, err := regexp.Compile("(?i)" + pattern)
-		if err != nil {
-			// Log bad pattern but don't block
+	// Bad patterns are skipped, not fatal; log each one so a broken whitelist is visible
+	logged := map[string]bool{}
+	for _, sub := range result.Subqueries {
+		if sub.Error != "" && !logged[sub.Error] {
+			logged[sub.Error] = true
 			_ = audit.Log(p.auditLogPath, p.username, "whitelist_error", p.config.Name, map[string]interface{}{
 				"connection_id": p.connectionID,
-				"pattern":       pattern,
-				"error":         err.Error(),
+				"error":         sub.Error,
 			})
-			continue
-		}
-		if re.MatchString(query) {
-			return true
 		}
 	}
 
-	return false
-}
-
-// isPLSQLScript checks if a query looks like a PL/SQL script with multiple statements
-func (p *PostgresAuthProxy) isPLSQLScript(query string) bool {
-	// Check for multiple semicolons (indicating multiple statements)
-	semicolonCount := strings.Count(query, ";")
-	if semicolonCount > 1 {
-		return true
+	if result.TotalQueries > 1 {
+		_ = audit.Log(p.auditLogPath, p.username, "plsql_subquery_validation", p.config.Name, map[string]interface{}{
+			"connection_id": p.connectionID,
+			"total_queries": result.TotalQueries,
+			"allowed_count": result.AllowedCount,
+			"blocked_count": result.BlockedCount,
+			"is_allowed":    result.IsAllowed,
+		})
 	}
-
-	// Check for PL/SQL block patterns
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	if strings.HasPrefix(upperQuery, "BEGIN") && strings.HasSuffix(upperQuery, "END") {
-		return true
-	}
-
-	// Check for procedure/function creation
-	if strings.Contains(upperQuery, "CREATE PROCEDURE") ||
-		strings.Contains(upperQuery, "CREATE FUNCTION") ||
-		strings.Contains(upperQuery, "CREATE OR REPLACE") {
-		return true
-	}
-
-	// Check for multiple SQL statements (basic heuristic)
-	statements := []string{"SELECT", "INSERT", "UPDATE", "DELETE", "EXECUTE"}
-	statementCount := 0
-	for _, stmt := range statements {
-		if strings.Contains(upperQuery, stmt) {
-			statementCount++
-		}
-	}
-
-	return statementCount > 1
+	return result.IsAllowed
 }
 
 // sendQueryBlockedError sends a proper PostgreSQL error response to the client for blocked queries

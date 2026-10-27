@@ -93,7 +93,10 @@ func (v *SubqueryValidator) ValidateSubquery(subquery PLSQLSubQuery, whitelist [
 		// Compile with case-insensitive flag
 		re, err := regexp.Compile("(?i)" + pattern)
 		if err != nil {
-			result.Error = fmt.Sprintf("invalid whitelist pattern: %s", pattern)
+			if result.Error != "" {
+				result.Error += "; "
+			}
+			result.Error += fmt.Sprintf("invalid whitelist pattern: %s", pattern)
 			continue
 		}
 

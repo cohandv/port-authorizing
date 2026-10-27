@@ -122,8 +122,9 @@ func openBrowser(url string) error {
 		cmd = "open"
 		args = []string{url}
 	case "windows":
-		cmd = "cmd"
-		args = []string{"/c", "start", url}
+		// "cmd /c start" splits the URL on '&' and drops query params; rundll32 passes it verbatim
+		cmd = "rundll32"
+		args = []string{"url.dll,FileProtocolHandler", url}
 	default: // linux, freebsd, etc.
 		cmd = "xdg-open"
 		args = []string{url}

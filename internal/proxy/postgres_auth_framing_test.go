@@ -125,3 +125,11 @@ func TestParseQueryExcludesParamTypes(t *testing.T) {
 		t.Fatalf("blocked %q", got)
 	}
 }
+
+// Simple Query text ends at its terminator too, like Parse; trailing bytes must not become part of the query.
+func TestSimpleQueryTextEndsAtTerminator(t *testing.T) {
+	p := newFramingProxy(`^SELECT 1$`)
+	if blocked, got := p.validateAndLogQuery(pgMsg('Q', "SELECT 1\x00EXTRA\x00")); blocked {
+		t.Fatalf("blocked %q", got)
+	}
+}

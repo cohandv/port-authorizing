@@ -826,7 +826,8 @@ func readHeader(r *bufio.Reader, hdr *[5]byte) (byte, int64, error) {
 // forwardClient forwards client messages one by one, validating every Query/Parse. A blocked Query is answered
 // with ErrorResponse+ReadyForQuery; a blocked Parse drops the rest of the extended-protocol batch up to Sync.
 // Other messages are streamed through without being buffered whole.
-// ponytail: with pipelined batches the injected error can overtake backend results still in flight; fine for psql/IDEs
+// ponytail: when queries are pipelined (simple or extended protocol) the injected error, and its ReadyForQuery status,
+// can overtake backend results still in flight; fine for psql/IDEs, a per-connection response queue if drivers need it
 func (p *PostgresAuthProxy) forwardClient(src, dst net.Conn, cw *clientWriter) {
 	r := bufio.NewReaderSize(src, 32*1024)
 	w := bufio.NewWriterSize(dst, 32*1024)
@@ -845,6 +846,9 @@ func (p *PostgresAuthProxy) forwardClient(src, dst net.Conn, cw *clientWriter) {
 		}
 		switch {
 		case skipToSync:
+			if body > maxClientMessage {
+				return
+			}
 			if _, err := r.Discard(int(body)); err != nil {
 				return
 			}
@@ -935,9 +939,12 @@ func (p *PostgresAuthProxy) validateAndLogQuery(data []byte) (bool, string) {
 
 				switch msgType {
 				case 'Q':
-					// Simple Query: query string starts at i+5
+					// Simple Query: null-terminated query string at i+5; the backend rejects any bytes after the terminator
 					queryBytes := data[i+5 : i+1+length]
-					query = string(bytes.TrimRight(queryBytes, "\x00"))
+					if end := bytes.IndexByte(queryBytes, 0); end >= 0 {
+						queryBytes = queryBytes[:end]
+					}
+					query = string(queryBytes)
 				case 'P':
 					// Parse message: format is statement_name (null-terminated) + query (null-terminated)
 					// Skip statement name to get to query

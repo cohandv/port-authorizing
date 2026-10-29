@@ -795,6 +795,9 @@ async function editConnection(name) {
             }
             
             document.getElementById('conn-backend-database').value = conn.backend_database || '';
+            document.getElementById('conn-backend-params').value =
+                conn.backend_params && Object.keys(conn.backend_params).length > 0
+                    ? JSON.stringify(conn.backend_params, null, 2) : '';
         } else if (conn.type === 'redis') {
             // Handle Redis username (Redis 6.0+ ACL)
             if (conn.backend_username) {
@@ -1007,6 +1010,21 @@ async function saveConnection(event) {
         }
         
         connection.backend_database = document.getElementById('conn-backend-database').value;
+
+        // Always send an object: {} clears params, an omitted field would keep the old ones
+        const paramsStr = document.getElementById('conn-backend-params').value.trim();
+        try {
+            connection.backend_params = paramsStr ? JSON.parse(paramsStr) : {};
+        } catch (e) {
+            showNotification('Invalid JSON in backend params field', 'error');
+            return;
+        }
+        const params = connection.backend_params;
+        if (params === null || typeof params !== 'object' || Array.isArray(params) ||
+            Object.values(params).some(v => typeof v !== 'string')) {
+            showNotification('Backend params must be a JSON object with string values', 'error');
+            return;
+        }
     } else if (connType === 'redis') {
         // Build backend_username ConfigSource (Redis 6.0+ ACL, optional)
         const usernameType = document.getElementById('conn-redis-username-type').value;

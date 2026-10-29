@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"io"
+	"net"
 	"testing"
 
 	"github.com/davidcohan/port-authorizing/internal/config"
@@ -214,5 +216,35 @@ func BenchmarkPostgresAuthProxy_IsQueryAllowed(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		proxy.isQueryAllowed(query)
+	}
+}
+
+func TestSendBackendStartup_BackendParams(t *testing.T) {
+	cfg := &config.ConnectionConfig{BackendParams: map[string]string{
+		"statement_timeout": "30s",
+		"application_name":  "pa",
+		"user":              "evil",
+	}}
+	p := NewPostgresAuthProxy(cfg, "", "u", "id", nil, &config.Config{}, nil, nil)
+
+	client, server := net.Pipe()
+	go func() { _ = p.sendBackendStartup(client, "backend", "db"); _ = client.Close() }()
+	msg, _ := io.ReadAll(server)
+
+	want := "user\x00backend\x00database\x00db\x00application_name\x00pa\x00statement_timeout\x0030s\x00\x00"
+	if got := string(msg[8:]); got != want {
+		t.Errorf("startup params = %q, want %q", got, want)
+	}
+}
+
+func TestSendBackendStartup_RejectsInvalidParams(t *testing.T) {
+	for _, params := range []map[string]string{{"": "x"}, {"a\x00b": "x"}, {"search_path": "public\x00evil"}} {
+		p := NewPostgresAuthProxy(&config.ConnectionConfig{BackendParams: params}, "", "u", "id", nil, &config.Config{}, nil, nil)
+		client, server := net.Pipe()
+		go func() { _, _ = io.Copy(io.Discard, server) }()
+		if err := p.sendBackendStartup(client, "backend", "db"); err == nil {
+			t.Errorf("%q: want error", params)
+		}
+		_ = client.Close()
 	}
 }

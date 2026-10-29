@@ -133,6 +133,7 @@ type ConnectionResponse struct {
 	BackendUsername config.ConfigSource `json:"backend_username,omitempty"`
 	BackendPassword config.ConfigSource `json:"backend_password,omitempty"`
 	BackendDatabase string              `json:"backend_database,omitempty"`
+	BackendParams   map[string]string   `json:"backend_params,omitempty"`
 	Whitelist       []string            `json:"whitelist,omitempty"`
 	TLS             *config.TLSConfig   `json:"tls,omitempty"`
 	// K8s Services specific fields
@@ -155,6 +156,7 @@ func toConnectionResponse(conn config.ConnectionConfig) ConnectionResponse {
 		BackendUsername:      sanitizeConfigSource(conn.BackendUsername),
 		BackendPassword:      sanitizeConfigSource(conn.BackendPassword),
 		BackendDatabase:      conn.BackendDatabase,
+		BackendParams:        conn.BackendParams,
 		Whitelist:            conn.Whitelist, //nolint:staticcheck // surfaced for API backward compat
 		TLS:                  conn.TLS,
 		K8sExcludeNamespaces: conn.K8sExcludeNamespaces,
@@ -351,6 +353,11 @@ func (s *Server) handleUpdateConnection(w http.ResponseWriter, r *http.Request) 
 			// Same logic for backend_username
 			if updatedConn.BackendUsername.Type == "" && updatedConn.BackendUsername.Value == "" && updatedConn.BackendUsername.Ref == "" {
 				updatedConn.BackendUsername = conn.BackendUsername
+			}
+
+			// An omitted backend_params means "unchanged" (older API clients); null or {} clears it
+			if _, sent := rawConn["backend_params"]; !sent {
+				updatedConn.BackendParams = conn.BackendParams
 			}
 
 			cfg.Connections[i] = updatedConn
@@ -922,13 +929,13 @@ func (s *Server) handleGetSystemStatus(w http.ResponseWriter, r *http.Request) {
 	activeConnectionsList := s.connMgr.GetActiveConnectionsList()
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status":                      "running",
-		"active_connections":          activeConnections,
-		"active_connections_list":     activeConnectionsList,
-		"configured_connections":      len(cfg.Connections),
-		"policies":                    len(cfg.Policies),
-		"users":                       len(cfg.Auth.Users),
-		"uptime":                      time.Since(time.Now()).String(), // Placeholder
+		"status":                  "running",
+		"active_connections":      activeConnections,
+		"active_connections_list": activeConnectionsList,
+		"configured_connections":  len(cfg.Connections),
+		"policies":                len(cfg.Policies),
+		"users":                   len(cfg.Auth.Users),
+		"uptime":                  time.Since(time.Now()).String(), // Placeholder
 	})
 }
 
@@ -987,6 +994,9 @@ func sanitizeConfig(cfg *config.Config) map[string]interface{} {
 		}
 		if conn.BackendDatabase != "" {
 			connMap["backend_database"] = conn.BackendDatabase
+		}
+		if len(conn.BackendParams) > 0 {
+			connMap["backend_params"] = conn.BackendParams
 		}
 		// Add TLS configuration
 		if conn.TLS != nil {

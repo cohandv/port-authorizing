@@ -117,9 +117,10 @@ func TestBlockedErrorNeverSplitsBackendMessage(t *testing.T) {
 	expectBlocked(t, cr, 'I')
 }
 
-// Parse carries parameter type OIDs after the query's terminator; they must not become part of the query text.
+// Parse carries parameter type OIDs after the query's terminator; they must not become part of the query text
+// (they'd be split off after the ';' as a second statement that matches nothing).
 func TestParseQueryExcludesParamTypes(t *testing.T) {
-	p := newFramingProxy(`^SELECT .*;$`)
+	p := newFramingProxy(`^SELECT`)
 	q := "SELECT oid FROM pg_type WHERE oid = ANY($1) ORDER BY oid;"
 	if blocked, got := p.validateAndLogQuery(pgMsg('P', "\x00"+q+"\x00\x00\x01\x00\x00\x03\xf8")); blocked {
 		t.Fatalf("blocked %q", got)

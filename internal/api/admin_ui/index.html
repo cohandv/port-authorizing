@@ -717,6 +717,12 @@
                     <label>Backend Database:</label>
                     <input type="text" id="conn-backend-database">
                 </div>
+
+                <div class="form-group">
+                    <label>Backend Params (JSON, optional):</label>
+                    <textarea id="conn-backend-params" rows="3" style="font-family: monospace; font-size: 0.9em;"></textarea>
+                    <small style="color: #666; font-size: 0.85em;">Session settings sent in the backend startup message. String values; "user" and "database" are ignored.</small>
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit">Save</button>

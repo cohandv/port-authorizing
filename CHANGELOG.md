@@ -1,3 +1,20 @@
+## [1.14.0](https://github.com/cohandv/port-authorizing/compare/v1.13.1...v1.14.0) (2026-10-29)
+
+
+### Features
+
+* **admin:** edit backend_params in the admin UI ([e2fcb0f](https://github.com/cohandv/port-authorizing/commit/e2fcb0f3106c96b0f354cab4a8492d28f0138565))
+
+
+### Bug Fixes
+
+* **api:** keep backend_params on admin connection updates, add `backend_params` into config.example.yaml ([ae7a323](https://github.com/cohandv/port-authorizing/commit/ae7a32342f1fa31b6bfdfc616c0366c540f9f3e9))
+* end simple query text at its terminator ([5f389f1](https://github.com/cohandv/port-authorizing/commit/5f389f1292b74585e3d1931738c2b509fb2be045))
+* **proxy:** forward postgres traffic message by message ([ea372a8](https://github.com/cohandv/port-authorizing/commit/ea372a853538cadebb6433ebd9cd1646baffa6dc))
+* **proxy:** validate every statement of a multi-statement postgres query ([62c3d2b](https://github.com/cohandv/port-authorizing/commit/62c3d2be507ddab34b5f8f694f1412a3384146d6))
+* **security:** lex nested comments and legacy string escapes like postgres ([5e1005d](https://github.com/cohandv/port-authorizing/commit/5e1005d2bd95cddb04d5c996bca570cfaeda5e43))
+* **test:** fix ParseQueryExcludesParamTypes after statement splitting ([3222b18](https://github.com/cohandv/port-authorizing/commit/3222b1897f65b95096e45afe45907720f39840db))
+
 ## [1.13.1](https://github.com/cohandv/port-authorizing/compare/v1.13.0...v1.13.1) (2026-10-26)
 
 

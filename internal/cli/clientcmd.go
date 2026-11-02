@@ -273,10 +273,12 @@ waitLoop:
 			}
 			terminateProcessGroup(clientCmd)
 			select {
-			case <-waitDone:
+			case werr := <-waitDone:
+				_ = werr
 			case <-time.After(3 * time.Second):
 				killProcessGroupNow(clientCmd)
-				<-waitDone
+				werr := <-waitDone
+				_ = werr
 			}
 			_ = listener.Close()
 			<-acceptDone

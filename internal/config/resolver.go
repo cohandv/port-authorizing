@@ -104,7 +104,8 @@ func (r *ConfigSourceResolver) ResolveConfigSource(ctx context.Context, source C
 	var exists bool
 	var fetchErr error
 
-	if source.Type == ConfigSourceTypeConfigMap {
+	switch source.Type {
+	case ConfigSourceTypeConfigMap:
 		cm, err := r.client.CoreV1().ConfigMaps(namespace).Get(ctx, resourceName, metav1.GetOptions{})
 		if err != nil {
 			log.Printf("Warning: Failed to read ConfigMap %s/%s: %v", namespace, resourceName, err)
@@ -132,7 +133,7 @@ func (r *ConfigSourceResolver) ResolveConfigSource(ctx context.Context, source C
 				exists = true
 			}
 		}
-	} else if source.Type == ConfigSourceTypeSecret {
+	case ConfigSourceTypeSecret:
 		secret, err := r.client.CoreV1().Secrets(namespace).Get(ctx, resourceName, metav1.GetOptions{})
 		if err != nil {
 			log.Printf("Warning: Failed to read Secret %s/%s: %v", namespace, resourceName, err)
@@ -160,7 +161,7 @@ func (r *ConfigSourceResolver) ResolveConfigSource(ctx context.Context, source C
 				exists = true
 			}
 		}
-	} else {
+	default:
 		fetchErr = fmt.Errorf("unknown ConfigSource type: %s", source.Type)
 		exists = false
 		value = source.Value
@@ -207,9 +208,10 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 				ref = cfg.Auth.JWTSecret.RefName
 			}
 			// JWT Secret is critical - return error instead of warning
-			if cfg.Auth.JWTSecret.Type == ConfigSourceTypeConfigMap {
+			switch cfg.Auth.JWTSecret.Type {
+			case ConfigSourceTypeConfigMap:
 				return nil, fmt.Errorf("CRITICAL: JWT Secret ConfigMap %s not found - cannot start without valid JWT secret", ref)
-			} else if cfg.Auth.JWTSecret.Type == ConfigSourceTypeSecret {
+			case ConfigSourceTypeSecret:
 				return nil, fmt.Errorf("CRITICAL: JWT Secret %s not found - cannot start without valid JWT secret", ref)
 			}
 		}
@@ -238,10 +240,11 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 				if ref == "" {
 					ref = conn.BackendUsername.RefName
 				}
-				if conn.BackendUsername.Type == ConfigSourceTypeConfigMap {
+				switch conn.BackendUsername.Type {
+				case ConfigSourceTypeConfigMap:
 					connErrors.MissingConfigMaps = append(connErrors.MissingConfigMaps, ref)
 					errors.MissingConfigMaps = append(errors.MissingConfigMaps, ref)
-				} else if conn.BackendUsername.Type == ConfigSourceTypeSecret {
+				case ConfigSourceTypeSecret:
 					connErrors.MissingSecrets = append(connErrors.MissingSecrets, ref)
 					errors.MissingSecrets = append(errors.MissingSecrets, ref)
 				}
@@ -257,10 +260,11 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 				if ref == "" {
 					ref = conn.BackendPassword.RefName
 				}
-				if conn.BackendPassword.Type == ConfigSourceTypeConfigMap {
+				switch conn.BackendPassword.Type {
+				case ConfigSourceTypeConfigMap:
 					connErrors.MissingConfigMaps = append(connErrors.MissingConfigMaps, ref)
 					errors.MissingConfigMaps = append(errors.MissingConfigMaps, ref)
-				} else if conn.BackendPassword.Type == ConfigSourceTypeSecret {
+				case ConfigSourceTypeSecret:
 					connErrors.MissingSecrets = append(connErrors.MissingSecrets, ref)
 					errors.MissingSecrets = append(errors.MissingSecrets, ref)
 				}
@@ -283,10 +287,11 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 				if ref == "" {
 					ref = cfg.Approval.Slack.WebhookURL.RefName
 				}
-				if cfg.Approval.Slack.WebhookURL.Type == ConfigSourceTypeConfigMap {
+				switch cfg.Approval.Slack.WebhookURL.Type {
+				case ConfigSourceTypeConfigMap:
 					errors.MissingConfigMaps = append(errors.MissingConfigMaps, ref)
 					errors.Warnings = append(errors.Warnings, fmt.Sprintf("Slack Webhook URL: ConfigMap %s not found", ref))
-				} else if cfg.Approval.Slack.WebhookURL.Type == ConfigSourceTypeSecret {
+				case ConfigSourceTypeSecret:
 					errors.MissingSecrets = append(errors.MissingSecrets, ref)
 					errors.Warnings = append(errors.Warnings, fmt.Sprintf("Slack Webhook URL: Secret %s not found", ref))
 				}
@@ -305,10 +310,11 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 				if ref == "" {
 					ref = cfg.Approval.Webhook.URL.RefName
 				}
-				if cfg.Approval.Webhook.URL.Type == ConfigSourceTypeConfigMap {
+				switch cfg.Approval.Webhook.URL.Type {
+				case ConfigSourceTypeConfigMap:
 					errors.MissingConfigMaps = append(errors.MissingConfigMaps, ref)
 					errors.Warnings = append(errors.Warnings, fmt.Sprintf("Approval Webhook URL: ConfigMap %s not found", ref))
-				} else if cfg.Approval.Webhook.URL.Type == ConfigSourceTypeSecret {
+				case ConfigSourceTypeSecret:
 					errors.MissingSecrets = append(errors.MissingSecrets, ref)
 					errors.Warnings = append(errors.Warnings, fmt.Sprintf("Approval Webhook URL: Secret %s not found", ref))
 				}
@@ -336,9 +342,10 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 						if ref == "" {
 							ref = provider.ClientSecret.RefName
 						}
-						if provider.ClientSecret.Type == ConfigSourceTypeConfigMap {
+						switch provider.ClientSecret.Type {
+						case ConfigSourceTypeConfigMap:
 							return nil, fmt.Errorf("CRITICAL: OIDC provider '%s' is enabled but client_secret ConfigMap %s not found", provider.Name, ref)
-						} else if provider.ClientSecret.Type == ConfigSourceTypeSecret {
+						case ConfigSourceTypeSecret:
 							return nil, fmt.Errorf("CRITICAL: OIDC provider '%s' is enabled but client_secret Secret %s not found", provider.Name, ref)
 						}
 					} else {
@@ -347,10 +354,11 @@ func (r *ConfigSourceResolver) ResolveConfig(ctx context.Context, cfg *Config) (
 						if ref == "" {
 							ref = provider.ClientSecret.RefName
 						}
-						if provider.ClientSecret.Type == ConfigSourceTypeConfigMap {
+						switch provider.ClientSecret.Type {
+						case ConfigSourceTypeConfigMap:
 							errors.MissingConfigMaps = append(errors.MissingConfigMaps, ref)
 							errors.Warnings = append(errors.Warnings, fmt.Sprintf("OIDC provider '%s' (disabled): ConfigMap %s not found", provider.Name, ref))
-						} else if provider.ClientSecret.Type == ConfigSourceTypeSecret {
+						case ConfigSourceTypeSecret:
 							errors.MissingSecrets = append(errors.MissingSecrets, ref)
 							errors.Warnings = append(errors.Warnings, fmt.Sprintf("OIDC provider '%s' (disabled): Secret %s not found", provider.Name, ref))
 						}

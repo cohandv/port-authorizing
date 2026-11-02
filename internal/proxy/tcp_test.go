@@ -2,9 +2,9 @@ package proxy
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -76,7 +76,7 @@ func TestTCPProxy_HandleRequest(t *testing.T) {
 	proxy := NewTCPProxy(connConfig)
 
 	// Test direct connection to backend (TCP proxy doesn't modify data)
-	backendAddr := fmt.Sprintf("%s:%d", connConfig.Host, connConfig.Port)
+	backendAddr := net.JoinHostPort(connConfig.Host, strconv.Itoa(connConfig.Port))
 	backendConn, err := net.DialTimeout("tcp", backendAddr, 5*time.Second)
 	if err != nil {
 		t.Fatalf("Failed to connect to backend: %v", err)
@@ -173,7 +173,7 @@ func TestTCPProxy_Integration(t *testing.T) {
 	defer func() { _ = proxy.Close() }()
 
 	// Connect to the backend through proxy config
-	backendAddr := fmt.Sprintf("%s:%d", connConfig.Host, connConfig.Port)
+	backendAddr := net.JoinHostPort(connConfig.Host, strconv.Itoa(connConfig.Port))
 	testConn, err := net.Dial("tcp", backendAddr)
 	if err != nil {
 		t.Fatalf("Failed to dial backend: %v", err)
@@ -258,7 +258,7 @@ func BenchmarkTCPProxy_Connection(b *testing.B) {
 
 	testData := []byte("benchmark test")
 
-	backendAddr := fmt.Sprintf("%s:%d", connConfig.Host, connConfig.Port)
+	backendAddr := net.JoinHostPort(connConfig.Host, strconv.Itoa(connConfig.Port))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

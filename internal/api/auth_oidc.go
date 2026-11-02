@@ -88,7 +88,7 @@ func (s *Server) handleOIDCWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	// Find OIDC provider
 	var oidcProvider *auth.OIDCProvider
@@ -267,7 +267,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 
 		// Show success page in browser
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `
+		_, _ = fmt.Fprint(w, `
 <!DOCTYPE html>
 <html>
 <head>

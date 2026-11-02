@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/davidcohan/port-authorizing/internal/config"
 )
@@ -27,7 +28,7 @@ func NewTCPProxy(config *config.ConnectionConfig) *TCPProxy {
 // 2. This would proxy raw TCP data bidirectionally
 func (p *TCPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error {
 	// Connect to target
-	targetAddr := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
+	targetAddr := net.JoinHostPort(p.config.Host, strconv.Itoa(p.config.Port))
 	conn, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		return fmt.Errorf("failed to connect to target: %w", err)

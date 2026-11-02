@@ -119,7 +119,7 @@ func runConnect(cmd *cobra.Command, args []string) error {
 	} else if len(args) > 0 {
 		// Mode 3: Multiple connection pairs
 		if len(args)%2 != 0 {
-			return fmt.Errorf("arguments must be in pairs: connection-name port [connection-name port]...")
+			return fmt.Errorf("arguments must be in pairs: connection-name port [connection-name port]")
 		}
 		
 		for i := 0; i < len(args); i += 2 {
@@ -348,7 +348,8 @@ func handleLocalConnection(localConn net.Conn, connectionID, token, apiURL strin
 					done <- err
 					return
 				}
-			case <-done:
+			case werr := <-done:
+				_ = werr
 				return
 			}
 		}

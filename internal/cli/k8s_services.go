@@ -178,7 +178,7 @@ func fetchK8sServicesList(apiURL, token, connectionID string) (map[string][]K8sD
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -240,7 +240,7 @@ func (c *k8sServiceConnection) acceptConnections(apiURL, token, connectionID str
 
 // handleConnection handles a single local connection by opening a WebSocket to the API
 func (c *k8sServiceConnection) handleConnection(localConn net.Conn, apiURL, token, connectionID string) {
-	defer localConn.Close()
+	defer func() { _ = localConn.Close() }()
 
 	// Build WebSocket URL with query params
 	wsURL := strings.Replace(apiURL, "http://", "ws://", 1)
@@ -269,7 +269,7 @@ func (c *k8sServiceConnection) handleConnection(localConn net.Conn, apiURL, toke
 		}
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Bidirectional proxy
 	var wg sync.WaitGroup
@@ -313,9 +313,9 @@ func (c *k8sServiceConnection) handleConnection(localConn net.Conn, apiURL, toke
 // Close closes the service connection
 func (c *k8sServiceConnection) Close() {
 	close(c.done)
-	c.listener.Close()
+	_ = c.listener.Close()
 	if c.wsConn != nil {
-		c.wsConn.Close()
+		_ = c.wsConn.Close()
 	}
 }
 
@@ -509,13 +509,13 @@ func generateK8sIndexHTML(services map[string][]K8sDiscoveredService, portMappin
         <div class="stats">
             <div class="stat">
                 <div class="stat-value">`)
-	sb.WriteString(fmt.Sprintf("%d", len(items)))
+	_, _ = fmt.Fprintf(&sb, "%d", len(items))
 	sb.WriteString(`</div>
                 <div class="stat-label">Service Ports</div>
             </div>
             <div class="stat">
                 <div class="stat-value">`)
-	sb.WriteString(fmt.Sprintf("%d", len(services)))
+	_, _ = fmt.Fprintf(&sb, "%d", len(services))
 	sb.WriteString(`</div>
                 <div class="stat-label">Namespaces</div>
             </div>
@@ -526,7 +526,7 @@ func generateK8sIndexHTML(services map[string][]K8sDiscoveredService, portMappin
 		localURL := fmt.Sprintf("http://localhost:%d", item.LocalPort)
 		docsURL := fmt.Sprintf("http://localhost:%d/docs", item.LocalPort)
 
-		sb.WriteString(fmt.Sprintf(`
+		_, _ = fmt.Fprintf(&sb, `
             <div class="service-item">
                 <div class="service-info">
                     <a href="%s" class="service-name" target="_blank">%s</a>
@@ -537,7 +537,7 @@ func generateK8sIndexHTML(services map[string][]K8sDiscoveredService, portMappin
                     <a href="%s" class="doc-link" target="_blank">📄 Docs</a>
                 </div>
             </div>`,
-			localURL, item.Name, item.Namespace, item.Port, docsURL))
+			localURL, item.Name, item.Namespace, item.Port, docsURL)
 	}
 
 	sb.WriteString(`

@@ -1136,7 +1136,7 @@ func (p *PostgresAuthProxy) sendQueryBlockedError(cw *clientWriter, query string
 	var fields bytes.Buffer
 	fields.WriteString("SERROR\x00") // Severity: ERROR
 	fields.WriteString("C42501\x00") // SQLSTATE: insufficient_privilege
-	fields.WriteString(fmt.Sprintf("MQuery blocked by whitelist policy: %s\x00", displayQuery))
+	_, _ = fmt.Fprintf(&fields, "MQuery blocked by whitelist policy: %s\x00", displayQuery)
 	fields.WriteString("HCheck your role's whitelist patterns in the configuration.\x00") // Hint
 	fields.WriteByte(0)                                                                   // Null terminator for fields
 

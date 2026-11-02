@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -129,7 +130,7 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Connect to backend target service
-	targetAddr := fmt.Sprintf("%s:%d", conn.Config.Host, conn.Config.Port)
+	targetAddr := net.JoinHostPort(conn.Config.Host, strconv.Itoa(conn.Config.Port))
 	targetConn, err := net.DialTimeout("tcp", targetAddr, 10*time.Second)
 	if err != nil {
 		_ = audit.Log(s.config.Logging.AuditLogPath, username, "backend_connect_failed", conn.Config.Name, map[string]interface{}{
@@ -219,7 +220,8 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		_ = wsConn.Close()
 
 		// Wait for the other goroutine to finish
-		<-done
+		err2 := <-done
+		_ = err2
 
 		// Determine disconnect reason from error
 		if err1 != nil && err1 != io.EOF {
@@ -240,8 +242,10 @@ func (s *Server) handleProxyStream(w http.ResponseWriter, r *http.Request) {
 		_ = wsConn.Close()
 
 		// Wait for both goroutines to finish
-		<-done
-		<-done
+		errA := <-done
+		errB := <-done
+		_ = errA
+		_ = errB
 	}
 
 	// Log session with captured traffic
@@ -771,7 +775,7 @@ func (s *Server) handleK8sServiceProxy(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	defer wsConn.Close()
+	defer func() { _ = wsConn.Close() }()
 
 	// Connect to K8s service
 	dialer := net.Dialer{Timeout: 10 * time.Second}
@@ -785,7 +789,7 @@ func (s *Server) handleK8sServiceProxy(w http.ResponseWriter, r *http.Request) {
 		_ = wsConn.WriteJSON(map[string]string{"error": fmt.Sprintf("Failed to connect to %s: %v", targetAddr, err)})
 		return
 	}
-	defer backendConn.Close()
+	defer func() { _ = backendConn.Close() }()
 
 	_ = audit.Log(s.config.Logging.AuditLogPath, username, "k8s_service_connected", conn.Config.Name, map[string]interface{}{
 		"connection_id": connectionID,

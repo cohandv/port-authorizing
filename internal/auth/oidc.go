@@ -47,7 +47,7 @@ func NewOIDCProvider(cfg config.AuthProviderConfig) (*OIDCProvider, error) {
 
 	audience, ok := cfg.Config["audience"]
 	if !ok || len(audience) == 0 {
-		return nil, fmt.Errorf("audience not configured or is empty string!")
+		return nil, fmt.Errorf("audience not configured or is empty string")
 	}
 
 	ctx := context.Background()
@@ -401,7 +401,7 @@ func (p *OIDCProvider) ExchangeCodeForToken(code, redirectURL string) (*UserInfo
 func (p *OIDCProvider) validateAudience(claims map[string]any) error {
 	aud, ok := claims["aud"].(string)
 	if !ok {
-		return fmt.Errorf("'aud' claim not found in token!")
+		return fmt.Errorf("'aud' claim not found in token")
 	}
 	if aud != p.audience {
 		return fmt.Errorf("'aud' does not match! Got '%s', but expected '%s'", aud, p.audience)

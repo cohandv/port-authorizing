@@ -28,7 +28,7 @@ func runOIDCLogin(apiURL, contextName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	// Get auth URL from WebSocket
 	var startMsg struct {

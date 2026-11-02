@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,7 +38,7 @@ func (p *SimplePostgresProxy) HandleConnection(clientConn net.Conn) error {
 	defer func() { _ = clientConn.Close() }()
 
 	// Connect to backend immediately
-	backendAddr := fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
+	backendAddr := net.JoinHostPort(p.config.Host, strconv.Itoa(p.config.Port))
 	backendConn, err := net.DialTimeout("tcp", backendAddr, 10*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to connect to backend: %w", err)

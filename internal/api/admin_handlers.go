@@ -1056,12 +1056,11 @@ func (s *Server) handlePolicyTest(w http.ResponseWriter, r *http.Request) {
 	queryType := testData.QueryType
 	if queryType == "" {
 		// Auto-detect based on connection type
-		if connection.Type == "postgres" || connection.Type == "oracle" || connection.Type == "mysql" {
-			queryType = "database"
-		} else if connection.Type == "http" || connection.Type == "https" {
+		switch connection.Type {
+		case "http", "https":
 			queryType = "http"
-		} else {
-			// Default to database for TCP and unknown types
+		default:
+			// Default to database for postgres/oracle/mysql/TCP and unknown types
 			queryType = "database"
 		}
 	}

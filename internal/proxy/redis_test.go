@@ -190,7 +190,7 @@ func TestRedisProxy_AuthenticateToBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	// Server goroutine
 	go func() {
@@ -198,7 +198,7 @@ func TestRedisProxy_AuthenticateToBackend(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read AUTH command
 		reader := bufio.NewReader(conn)
@@ -235,7 +235,7 @@ func TestRedisProxy_AuthenticateToBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to connect to mock server: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Test authentication
 	err = rp.authenticateToBackend(conn, "testpassword")
@@ -247,8 +247,8 @@ func TestRedisProxy_AuthenticateToBackend(t *testing.T) {
 func TestRedisAuthProxy_SendCommandBlockedError(t *testing.T) {
 	// Create a pair of connected net.Conn for testing
 	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
+	defer func() { _ = server.Close() }()
+	defer func() { _ = client.Close() }()
 
 	rp := &RedisAuthProxy{
 		config: &config.ConnectionConfig{

@@ -192,7 +192,7 @@ func checkForUpdates() error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch releases: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == 401 {
 		return fmt.Errorf("authentication failed: invalid GITHUB_TOKEN")

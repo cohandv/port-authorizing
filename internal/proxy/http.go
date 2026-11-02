@@ -252,7 +252,7 @@ func (p *HTTPProxy) HandleRequest(w http.ResponseWriter, r *http.Request) error 
 
 	// Build host - omit port for standard ports
 	targetHost := p.config.Host
-	if !((scheme == "https" && p.config.Port == 443) || (scheme == "http" && p.config.Port == 80)) {
+	if (scheme != "https" || p.config.Port != 443) && (scheme != "http" || p.config.Port != 80) {
 		targetHost = fmt.Sprintf("%s:%d", p.config.Host, p.config.Port)
 	}
 
